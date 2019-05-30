@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -25,18 +25,23 @@ using System.Text.RegularExpressions;
 using KeePassLib.Collections;
 using KeePassLib.Delegates;
 using KeePassLib.Interfaces;
+using KeePassLib.Resources;
 using KeePassLib.Security;
 using KeePassLib.Utility;
 
 namespace KeePassLib
 {
 	/// <summary>
-	/// A group containing several password entries.
+	/// A group containing subgroups and entries.
 	/// </summary>
 	public sealed class PwGroup : ITimeLogger, IStructureItem, IDeepCloneable<PwGroup>
 	{
 		public const bool DefaultAutoTypeEnabled = true;
 		public const bool DefaultSearchingEnabled = true;
+
+		// In the tree view of Windows 10, the X coordinate is reset
+		// to 0 after 256 nested nodes
+		private const uint MaxDepth = 126; // Depth 126 = level 127 < 256/2
 
 		private PwObjectList<PwGroup> m_listGroups = new PwObjectList<PwGroup>();
 		private PwObjectList<PwEntry> m_listEntries = new PwObjectList<PwEntry>();
@@ -139,7 +144,8 @@ namespace KeePassLib
 		{
 			get { return m_pParentGroup; }
 
-			// Plugins: use <c>PwGroup.AddGroup</c> instead.
+			// Plugins: use the PwGroup.AddGroup method instead.
+			// Internal: check depth using CanAddGroup/CheckCanAddGroup.
 			internal set { Debug.Assert(value != this); m_pParentGroup = value; }
 		}
 
@@ -675,7 +681,8 @@ namespace KeePassLib
 					if(!groupHandler(pg)) return false;
 				}
 
-				pg.PreOrderTraverseTree(groupHandler, entryHandler);
+				if(!pg.PreOrderTraverseTree(groupHandler, entryHandler))
+					return false;
 			}
 
 			return true;
@@ -878,11 +885,15 @@ namespace KeePassLib
 			bool bUrl = sp.SearchInUrls;
 			bool bNotes = sp.SearchInNotes;
 			bool bOther = sp.SearchInOther;
-			bool bUuids = sp.SearchInUuids;
-			bool bGroupName = sp.SearchInGroupNames;
+			bool bStringName = sp.SearchInStringNames;
 			bool bTags = sp.SearchInTags;
+			bool bUuids = sp.SearchInUuids;
+			bool bGroupPath = sp.SearchInGroupPaths;
+			bool bGroupName = sp.SearchInGroupNames;
 			// bool bExcludeExpired = sp.ExcludeExpired;
 			// bool bRespectEntrySearchingDisabled = sp.RespectEntrySearchingDisabled;
+
+			if(bGroupPath) bGroupName = false; // Name is included in path
 
 			Regex rx = null;
 			if(sp.RegularExpression)
@@ -958,12 +969,15 @@ namespace KeePassLib
 						if(lResults.UCount != uInitialResults) break;
 					}
 
-					if(bUuids && (lResults.UCount == uInitialResults))
-						SearchEvalAdd(sp, pe.Uuid.ToHexString(), rx, pe, lResults);
+					if(bStringName)
+					{
+						foreach(KeyValuePair<string, ProtectedString> kvp in pe.Strings)
+						{
+							if(lResults.UCount != uInitialResults) break;
 
-					if(bGroupName && (lResults.UCount == uInitialResults) &&
-						(pe.ParentGroup != null))
-						SearchEvalAdd(sp, pe.ParentGroup.Name, rx, pe, lResults);
+							SearchEvalAdd(sp, kvp.Key, rx, pe, lResults);
+						}
+					}
 
 					if(bTags)
 					{
@@ -974,6 +988,18 @@ namespace KeePassLib
 							SearchEvalAdd(sp, strTag, rx, pe, lResults);
 						}
 					}
+
+					if(bUuids && (lResults.UCount == uInitialResults))
+						SearchEvalAdd(sp, pe.Uuid.ToHexString(), rx, pe, lResults);
+
+					if(bGroupPath && (lResults.UCount == uInitialResults) &&
+						(pe.ParentGroup != null))
+						SearchEvalAdd(sp, pe.ParentGroup.GetFullPath("\n", true),
+							rx, pe, lResults);
+
+					if(bGroupName && (lResults.UCount == uInitialResults) &&
+						(pe.ParentGroup != null))
+						SearchEvalAdd(sp, pe.ParentGroup.Name, rx, pe, lResults);
 				}
 			}
 
@@ -1224,7 +1250,7 @@ namespace KeePassLib
 			PwGroup pg = m_pParentGroup;
 			while(pg != null)
 			{
-				if((!bIncludeTopMostGroup) && (pg.m_pParentGroup == null))
+				if(!bIncludeTopMostGroup && (pg.m_pParentGroup == null))
 					break;
 
 				strPath = pg.Name + strSeparator + strPath;
@@ -1347,21 +1373,34 @@ namespace KeePassLib
 #endif
 
 		/// <summary>
-		/// Get the level of the group (i.e. the number of parent groups).
+		/// Get the depth of this group (i.e. the number of ancestors).
 		/// </summary>
-		/// <returns>Number of parent groups.</returns>
-		public uint GetLevel()
+		/// <returns>Depth of this group.</returns>
+		public uint GetDepth()
 		{
 			PwGroup pg = m_pParentGroup;
-			uint uLevel = 0;
+			uint d = 0;
 
 			while(pg != null)
 			{
-				pg = pg.ParentGroup;
-				++uLevel;
+				pg = pg.m_pParentGroup;
+				++d;
 			}
 
-			return uLevel;
+			return d;
+		}
+
+		private uint GetHeight()
+		{
+			if(m_listGroups.UCount == 0) return 0;
+
+			uint h = 0;
+			foreach(PwGroup pgSub in m_listGroups)
+			{
+				h = Math.Max(h, pgSub.GetHeight());
+			}
+
+			return (h + 1);
 		}
 
 		public string GetAutoTypeSequenceInherited()
@@ -1500,11 +1539,29 @@ namespace KeePassLib
 		{
 			if(subGroup == null) throw new ArgumentNullException("subGroup");
 
+			CheckCanAddGroup(subGroup);
 			m_listGroups.Add(subGroup);
 
-			if(bTakeOwnership) subGroup.m_pParentGroup = this;
+			if(bTakeOwnership) subGroup.ParentGroup = this;
 
 			if(bUpdateLocationChangedOfSub) subGroup.LocationChanged = DateTime.UtcNow;
+		}
+
+		internal bool CanAddGroup(PwGroup pgSub)
+		{
+			if(pgSub == null) { Debug.Assert(false); return false; }
+
+			uint dCur = GetDepth(), hSub = pgSub.GetHeight();
+			return ((dCur + hSub + 1) <= MaxDepth);
+		}
+
+		internal void CheckCanAddGroup(PwGroup pgSub)
+		{
+			if(!CanAddGroup(pgSub))
+			{
+				Debug.Assert(false);
+				throw new InvalidOperationException(KLRes.StructsTooDeep);
+			}
 		}
 
 		/// <summary>
@@ -1635,6 +1692,84 @@ namespace KeePassLib
 			pg.TakeOwnership(true, true, true);
 
 			return pg;
+		}
+
+		internal string[] CollectEntryStrings(GFunc<PwEntry, string> f, bool bSort)
+		{
+			if(f == null) { Debug.Assert(false); return new string[0]; }
+
+			Dictionary<string, bool> d = new Dictionary<string, bool>();
+
+			EntryHandler eh = delegate(PwEntry pe)
+			{
+				string str = f(pe);
+				if(str != null) d[str] = true;
+
+				return true;
+			};
+			TraverseTree(TraversalMethod.PreOrder, null, eh);
+
+			string[] v = new string[d.Count];
+			if(d.Count != 0)
+			{
+				d.Keys.CopyTo(v, 0);
+				if(bSort) Array.Sort<string>(v, StrUtil.CaseIgnoreComparer);
+			}
+
+			return v;
+		}
+
+		internal string[] GetAutoTypeSequences(bool bWithStd)
+		{
+			try
+			{
+				Dictionary<string, bool> d = new Dictionary<string, bool>();
+
+				GAction<string> fAdd = delegate(string str)
+				{
+					if(!string.IsNullOrEmpty(str)) d[str] = true;
+				};
+
+				if(bWithStd)
+				{
+					fAdd(PwDefs.DefaultAutoTypeSequence);
+					fAdd(PwDefs.DefaultAutoTypeSequenceTan);
+				}
+
+				GroupHandler gh = delegate(PwGroup pg)
+				{
+					fAdd(pg.DefaultAutoTypeSequence);
+					return true;
+				};
+
+				EntryHandler eh = delegate(PwEntry pe)
+				{
+					AutoTypeConfig c = pe.AutoType;
+
+					fAdd(c.DefaultSequence);
+					foreach(AutoTypeAssociation a in c.Associations)
+					{
+						fAdd(a.Sequence);
+					}
+
+					return true;
+				};
+
+				gh(this);
+				TraverseTree(TraversalMethod.PreOrder, gh, eh);
+
+				string[] v = new string[d.Count];
+				if(d.Count != 0)
+				{
+					d.Keys.CopyTo(v, 0);
+					Array.Sort<string>(v, StrUtil.CaseIgnoreComparer);
+				}
+
+				return v;
+			}
+			catch(Exception) { Debug.Assert(false); }
+
+			return new string[0];
 		}
 	}
 

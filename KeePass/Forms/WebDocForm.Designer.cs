@@ -1,6 +1,6 @@
 ﻿namespace KeePass.Forms
 {
-	partial class EntryReportForm
+	partial class WebDocForm
 	{
 		/// <summary>
 		/// Required designer variable.
@@ -28,42 +28,42 @@
 		/// </summary>
 		private void InitializeComponent()
 		{
-			this.m_lvEntries = new KeePass.UI.CustomListViewEx();
+			this.m_wbMain = new System.Windows.Forms.WebBrowser();
 			this.SuspendLayout();
 			// 
-			// m_lvEntries
+			// m_wbMain
 			// 
-			this.m_lvEntries.Dock = System.Windows.Forms.DockStyle.Fill;
-			this.m_lvEntries.FullRowSelect = true;
-			this.m_lvEntries.GridLines = true;
-			this.m_lvEntries.HeaderStyle = System.Windows.Forms.ColumnHeaderStyle.Nonclickable;
-			this.m_lvEntries.Location = new System.Drawing.Point(0, 0);
-			this.m_lvEntries.Name = "m_lvEntries";
-			this.m_lvEntries.ShowItemToolTips = true;
-			this.m_lvEntries.Size = new System.Drawing.Size(612, 412);
-			this.m_lvEntries.TabIndex = 0;
-			this.m_lvEntries.UseCompatibleStateImageBehavior = false;
-			this.m_lvEntries.View = System.Windows.Forms.View.Details;
+			this.m_wbMain.AllowWebBrowserDrop = false;
+			this.m_wbMain.Dock = System.Windows.Forms.DockStyle.Fill;
+			this.m_wbMain.IsWebBrowserContextMenuEnabled = false;
+			this.m_wbMain.Location = new System.Drawing.Point(0, 0);
+			this.m_wbMain.MinimumSize = new System.Drawing.Size(20, 20);
+			this.m_wbMain.Name = "m_wbMain";
+			this.m_wbMain.ScriptErrorsSuppressed = true;
+			this.m_wbMain.Size = new System.Drawing.Size(541, 445);
+			this.m_wbMain.TabIndex = 0;
+			this.m_wbMain.WebBrowserShortcutsEnabled = false;
+			this.m_wbMain.Navigating += new System.Windows.Forms.WebBrowserNavigatingEventHandler(this.OnWebNavigating);
 			// 
-			// EntryReportForm
+			// WebDocForm
 			// 
 			this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
 			this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-			this.ClientSize = new System.Drawing.Size(612, 412);
-			this.Controls.Add(this.m_lvEntries);
+			this.ClientSize = new System.Drawing.Size(541, 445);
+			this.Controls.Add(this.m_wbMain);
 			this.MinimizeBox = false;
-			this.Name = "EntryReportForm";
+			this.Name = "WebDocForm";
 			this.ShowInTaskbar = false;
 			this.StartPosition = System.Windows.Forms.FormStartPosition.CenterParent;
 			this.Text = "<>";
 			this.Load += new System.EventHandler(this.OnFormLoad);
+			this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.OnFormClosed);
 			this.ResumeLayout(false);
 
 		}
 
 		#endregion
 
-		private KeePass.UI.CustomListViewEx m_lvEntries;
-
+		private System.Windows.Forms.WebBrowser m_wbMain;
 	}
 }

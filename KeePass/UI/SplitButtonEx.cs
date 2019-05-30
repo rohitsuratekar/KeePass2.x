@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,34 +19,39 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Drawing;
-using System.Windows.Forms;
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Drawing;
+using System.Text;
+using System.Windows.Forms;
 
 using KeePass.Native;
 using KeePass.Util;
+
+using NativeLib = KeePassLib.Native.NativeLib;
 
 namespace KeePass.UI
 {
 	public sealed class SplitButtonEx : Button
 	{
 		private const int BS_SPLITBUTTON = 0x0000000C;
+		// private const int BS_LEFTTEXT = 0x00000020;
+		// private const int BS_RIGHT = 0x00000200;
 
 		private const uint BCN_FIRST = unchecked((uint)(-1250));
 		private const uint BCN_DROPDOWN = (BCN_FIRST + 0x0002);
 
 		private readonly bool m_bSupported;
 
-		private ContextMenuStrip m_ctx = null;
+		private CustomContextMenuStripEx m_ctx = null;
 		[Browsable(false)]
 		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-		public ContextMenuStrip SplitDropDownMenu
+		public CustomContextMenuStripEx SplitDropDownMenu
 		{
 			get { return m_ctx; }
 			set { m_ctx = value; }
 		}
+		public bool ShouldSerializeSplitDropDownMenu() { return false; }
 
 		[Browsable(false)]
 		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -56,7 +61,14 @@ namespace KeePass.UI
 			{
 				CreateParams cp = base.CreateParams;
 
-				if(m_bSupported) cp.Style |= BS_SPLITBUTTON;
+				if(m_bSupported)
+				{
+					int fAdd = BS_SPLITBUTTON;
+					// if(this.RightToLeft == RightToLeft.Yes)
+					//	fAdd |= (BS_LEFTTEXT | BS_RIGHT);
+
+					cp.Style |= fAdd;
+				}
 
 				return cp;
 			}
@@ -65,12 +77,9 @@ namespace KeePass.UI
 		public SplitButtonEx() : base()
 		{
 			m_bSupported = (WinUtil.IsAtLeastWindowsVista &&
-				!KeePassLib.Native.NativeLib.IsUnix() && !Program.DesignMode);
+				!NativeLib.IsUnix() && !Program.DesignMode);
 
-			if(m_bSupported)
-			{
-				this.FlatStyle = FlatStyle.System;
-			}
+			if(m_bSupported) this.FlatStyle = FlatStyle.System;
 		}
 
 		protected override void WndProc(ref Message m)
@@ -85,7 +94,7 @@ namespace KeePass.UI
 					{
 						if(m_ctx != null)
 						{
-							m_ctx.Show(this, new Point(0, this.Height));
+							m_ctx.ShowEx(this);
 							return; // We handled it
 						}
 						else { Debug.Assert(false); }

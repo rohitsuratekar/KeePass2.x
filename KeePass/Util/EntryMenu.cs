@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -33,7 +33,7 @@ namespace KeePass.Util
 {
 	public static class EntryMenu
 	{
-		private static ContextMenuStrip m_ctx = null;
+		private static CustomContextMenuStripEx m_ctx = null;
 
 		public static void Show()
 		{
@@ -58,7 +58,7 @@ namespace KeePass.Util
 			}
 		}
 
-		private static ContextMenuStrip Construct()
+		private static CustomContextMenuStripEx Construct()
 		{
 			CustomContextMenuStripEx ctx = new CustomContextMenuStripEx();
 
@@ -173,9 +173,9 @@ namespace KeePass.Util
 		private static void OnAutoType(object sender, EventArgs e)
 		{
 			ToolStripMenuItem tsmi = (sender as ToolStripMenuItem);
-			Debug.Assert(tsmi != null); if(tsmi == null) return;
+			if(tsmi == null) { Debug.Assert(false); return; }
 			PwEntry pe = (tsmi.Tag as PwEntry);
-			Debug.Assert(pe != null); if(pe == null) return;
+			if(pe == null) { Debug.Assert(false); return; }
 
 			try
 			{
@@ -191,9 +191,9 @@ namespace KeePass.Util
 		private static void OnCopyField(object sender, string strField)
 		{
 			ToolStripMenuItem tsmi = (sender as ToolStripMenuItem);
-			Debug.Assert(tsmi != null); if(tsmi == null) return;
+			if(tsmi == null) { Debug.Assert(false); return; }
 			PwEntry pe = (tsmi.Tag as PwEntry);
-			Debug.Assert(pe != null); if(pe == null) return;
+			if(pe == null) { Debug.Assert(false); return; }
 
 			ClipboardUtil.Copy(pe.Strings.ReadSafe(strField), true, true,
 				pe, Program.MainForm.DocumentManager.SafeFindContainerOf(pe),

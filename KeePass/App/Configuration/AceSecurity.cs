@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,8 +19,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.ComponentModel;
+using System.Text;
 
 namespace KeePass.App.Configuration
 {
@@ -79,6 +79,18 @@ namespace KeePass.App.Configuration
 			set { m_bSecureDesktop = value; }
 		}
 
+		private string m_strMasterKeyExpiryRec = string.Empty;
+		[DefaultValue("")]
+		public string MasterKeyExpiryRec
+		{
+			get { return m_strMasterKeyExpiryRec; }
+			set
+			{
+				if(value == null) throw new ArgumentNullException("value");
+				m_strMasterKeyExpiryRec = value;
+			}
+		}
+
 		private bool m_bClipClearOnExit = true;
 		[DefaultValue(true)]
 		public bool ClipboardClearOnExit
@@ -93,6 +105,14 @@ namespace KeePass.App.Configuration
 		{
 			get { return m_nClipClearSeconds; }
 			set { m_nClipClearSeconds = value; }
+		}
+
+		private bool m_bClipNoPersist = true;
+		[DefaultValue(true)]
+		public bool ClipboardNoPersist
+		{
+			get { return m_bClipNoPersist; }
+			set { m_bClipNoPersist = value; }
 		}
 
 		// Disabled by default, because Office's clipboard tools
@@ -120,6 +140,15 @@ namespace KeePass.App.Configuration
 		{
 			get { return m_bSslCertsAcceptInvalid; }
 			set { m_bSslCertsAcceptInvalid = value; }
+		}
+
+		// https://keepass.info/help/v2_dev/customize.html#opt
+		private bool m_bProtectProcessWithDacl = false;
+		[DefaultValue(false)]
+		public bool ProtectProcessWithDacl
+		{
+			get { return m_bProtectProcessWithDacl; }
+			set { m_bProtectProcessWithDacl = value; }
 		}
 	}
 
@@ -218,6 +247,14 @@ namespace KeePass.App.Configuration
 		{
 			get { return m_uMinQuality; }
 			set { m_uMinQuality = value; }
+		}
+
+		private bool m_bRememberWhileOpen = true;
+		[DefaultValue(true)]
+		public bool RememberWhileOpen
+		{
+			get { return m_bRememberWhileOpen; }
+			set { m_bRememberWhileOpen = value; }
 		}
 	}
 }

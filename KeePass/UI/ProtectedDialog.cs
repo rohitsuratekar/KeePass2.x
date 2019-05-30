@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -107,11 +107,8 @@ namespace KeePass.UI
 				IntPtr pOrgDesktop = NativeMethods.GetThreadDesktop(uOrgThreadId);
 
 				string strName = "D" + Convert.ToBase64String(
-					CryptoRandom.Instance.GetRandomBytes(16),
-					Base64FormattingOptions.None);
-				strName = strName.Replace(@"+", string.Empty);
-				strName = strName.Replace(@"/", string.Empty);
-				strName = strName.Replace(@"=", string.Empty);
+					CryptoRandom.Instance.GetRandomBytes(16));
+				strName = StrUtil.AlphaNumericOnly(strName);
 				if(strName.Length > 15) strName = strName.Substring(0, 15);
 
 				NativeMethods.DesktopFlags deskFlags =

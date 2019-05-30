@@ -2,25 +2,25 @@
 	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
 <head>
-	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<meta http-equiv="expires" content="0" />
+	<meta http-equiv="cache-control" content="no-cache" />
+	<meta http-equiv="pragma" content="no-cache" />
+
 	<meta name="author" content="Dominik Reichl" />
 
-	<meta name="description" content="KeePass is an open source password manager. Passwords can be stored in highly-encrypted databases, which can be unlocked with one master password or key file." />
-	<meta name="keywords" content="KeePass, Password, Safe, Security, Database, Encryption, Secure, Manager, Open, Source, Free, Code, Key, Master, Disk, Dominik, Reichl" />
+	
+	
 
-	<meta name="robots" content="index" />
+	<meta name="DC.title" content="Customization (2.x) - KeePass" />
+	<meta name="DC.creator" content="Dominik Reichl" />
+	<meta name="DC.type" content="Text" />
+	<meta name="DC.format" content="text/html" />
+	<meta name="DC.language" content="en" />
+	<meta name="DC.rights" content="Copyright (C) 2003-2019 Dominik Reichl" />
 
-	<meta name="DC.Title" content="KeePass - The Open Source Password Manager" />
-	<meta name="DC.Creator" content="Dominik Reichl" />
-	<meta name="DC.Subject" content="Open-Source Password Safe" />
-	<meta name="DC.Description" content="KeePass is an open source password manager. Passwords can be stored in highly-encrypted databases, which can be unlocked with one master password or key file." />
-	<meta name="DC.Publisher" content="Dominik Reichl" />
-	<meta name="DC.Contributor" content="Dominik Reichl" />
-	<meta name="DC.Type" content="text" />
-	<meta name="DC.Format" content="text/html" />
-	<meta name="DC.Identifier" content="http://keepass.info/" />
-	<meta name="DC.Language" content="en" />
-	<meta name="DC.Rights" content="Copyright (c) 2003-2017 Dominik Reichl" />
+	<meta name="robots" content="index, follow" />
+	<meta name="flattr:id" content="42rykv" />
 
 	<title>Customization (2.x) - KeePass</title>
 	<base target="_self" />
@@ -32,8 +32,9 @@
 
 
 
-<table class="sectionsummary"><tr><td width="68px">
-<img src="../images/b64x64_package_system.png" class="singleimg" align="left" alt="Help" />
+<table class="sectionsummary"><tr><td width="68">
+<img src="../images/b64x64_package_system.png" width="64" height="64"
+class="singleimg" align="left" alt="Computer" />
 </td><td valign="middle"><h1>Customization (2.x)</h1><br />
 KeePass 2.x features various options for network administrators to
 customize the program's appearance and behavior.
@@ -93,18 +94,22 @@ the following flags:</p>
 <tr><td style="text-align: right">0x0</td><td style="text-align: right">0</td>
 <td>Don't force any states (default).</td></tr>
 <tr><td style="text-align: right">0x1</td><td style="text-align: right">1</td>
-<td>Disable 'Tools' -&gt; 'Options' menu item.</td></tr>
+<td>Disable 'Tools' &rarr; 'Options' menu item.</td></tr>
 <tr><td style="text-align: right">0x2</td><td style="text-align: right">2</td>
-<td>Disable 'Tools' -&gt; 'Plugins' menu item.</td></tr>
+<td>Disable 'Tools' &rarr; 'Plugins' menu item.</td></tr>
 <tr><td style="text-align: right">0x4</td><td style="text-align: right">4</td>
-<td>Disable 'Tools' -&gt; 'Triggers' menu item.</td></tr>
+<td>Disable 'Tools' &rarr; 'Triggers' menu item.</td></tr>
 <tr><td style="text-align: right">0x8</td><td style="text-align: right">8</td>
 <td>Disable controls to specify after how many
 days the master key should/must be changed.</td></tr>
 <tr><td style="text-align: right">0x10</td><td style="text-align: right">16</td>
 <td>Hide password quality progress bars and information labels.</td></tr>
 <tr><td style="text-align: right">0x20</td><td style="text-align: right">32</td>
-<td>Disable 'Help' -&gt; 'Check for Updates' menu item.</td></tr>
+<td>Disable 'Help' &rarr; 'Check for Updates' menu item.</td></tr>
+<tr><td style="text-align: right">0x40</td><td style="text-align: right">64</td>
+<td>Disable 'Tools' &rarr; 'Database Tools' &rarr; 'XML Replace' menu item.</td></tr>
+<tr><td style="text-align: right">0x80</td><td style="text-align: right">128</td>
+<td>Disable 'File' &rarr; 'Database Settings' menu item.</td></tr>
 <tr><td style="text-align: right">0x10000</td><td style="text-align: right">65536</td>
 <td>Hide built-in profiles in the
 password generator context menu of the entry editing dialog.</td></tr>
@@ -114,13 +119,17 @@ password generator context menu of the entry editing dialog.</td></tr>
 changes. Thus, when only last access times are changed and the user closes the
 database (without saving manually first and without a save forced e.g. by a trigger or plugin),
 the changes to the last access times are lost.</td></tr>
+<tr><td style="text-align: right">0x40000</td><td style="text-align: right">262144</td>
+<td>Do not display information dialogs when creating a new database.</td></tr>
+<tr><td style="text-align: right">0x80000</td><td style="text-align: right">524288</td>
+<td>Do not display auto-type obfuscation compatibility information dialogs.</td></tr>
 </table>
 
 <p>The value of <code>UIFlags</code> must be specified in decimal notation.</p>
 
-<p>For example, if you want to disable the 'Options' and 'Plugins' items in
-the 'Tools' menu, you'd specify 3 as value for the <code>UIFlags</code> node
-(0x1 + 0x2 = 0x3 = 3).</p>
+<p>For example, if you want to disable the 'Options' and 'Check for Updates'
+menu items, you'd specify 33 as value for the <code>UIFlags</code> node
+(0x1 + 0x20 = 1 + 32 = 33).</p>
 
 <br />
 
@@ -129,7 +138,11 @@ the 'Tools' menu, you'd specify 3 as value for the <code>UIFlags</code> node
 <img src="../images/b16x16_kcmsystem.png" class="singleimg" alt="Key" />&nbsp;&nbsp;More
 Options</h2>
 
-<ul>
+<ul class="withspc">
+<li><b>Configuration/Application/ExpirySoonDays</b>:<br />
+Specifies the number of days within which entries are considered
+to expire &quot;soon&quot;. The default value is 7.</li>
+
 <li><b>Configuration/Defaults/WinFavsBaseFolderName</b>:<br />
 For the 'Windows Favorites' export:
 name of the root folder; the default value is 'KeePass'.</li>
@@ -148,13 +161,47 @@ The minimum is 1 ms.
 Note that very small delays may result in target applications not being able
 to process the keypresses correctly.</li>
 
+<li><b>Configuration/Integration/AutoTypeAbortOnWindows</b>:<br />
+This node may contain one or more <code>Window</code> nodes that
+specify disallowed auto-type target windows (the value of each node must
+be a <a href="../base/autotype.html#autowindows">target window filter</a>).
+
+<p>For example, the following configuration disallows auto-typing into
+WordPad and LibreOffice Writer:</p>
+<pre>&lt;AutoTypeAbortOnWindows&gt;
+&nbsp;&nbsp;&nbsp;&nbsp;&lt;Window&gt;* - WordPad&lt;/Window&gt;
+&nbsp;&nbsp;&nbsp;&nbsp;&lt;Window&gt;* - LibreOffice Writer&lt;/Window&gt;
+&lt;/AutoTypeAbortOnWindows&gt;</pre></li>
+
 <li><b>Configuration/Security/MasterKeyTries</b>:<br />
 Specifies how often the master key dialog appears when entering incorrect
 master keys. The default value is 3.</li>
 
-<li><b>Configuration/Application/ExpirySoonDays</b>:<br />
-Specifies the number of days within which entries are considered
-to expire &quot;soon&quot;. The default value is 7.</li>
+<li><b>Configuration/Security/ProtectProcessWithDacl</b>:<br />
+If this option is set to <code>true</code>, KeePass protects its process
+with a DACL.<br />
+<em>Warning!</em>
+Please note that this also blocks legitimate other software
+(accessibility-related tools like Windows Narrator, other security
+products like anti-virus programs or firewalls, tools providing user interface
+enhancements, etc.) from working with KeePass. Furthermore, various problems
+like application hangs, exceptions and crashes may occur.
+Therefore, this option is turned off by default and can only be turned on
+by manually editing the configuration file.
+It only works reasonably in very specific, limited usage scenarios
+and is not recommended for most users.<br />
+This option works on Windows only and requires the KeePassLibC DLL
+(included in default installations and packages).</li>
+
+<li><b>Configuration/UI/TrayIcon/ShowOnlyIfTrayedEx</b>:<br />
+If this option is set to <code>true</code>, the KeePass icon in the
+system tray is displayed only if the main window has been minimized
+to the tray.<br />
+<em>Warning!</em>
+Turning on this option can result in denial-of-service problems.
+If you want to hide the KeePass icon, it is recommended to configure
+this in the system settings instead (in Windows: 'Personalization' &rarr;
+'Taskbar' &rarr; 'Select which icons appear on the taskbar').</li>
 </ul>
 
 </body></html>

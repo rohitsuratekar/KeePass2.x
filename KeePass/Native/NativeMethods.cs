@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -18,11 +18,11 @@
 */
 
 using System;
-using System.Text;
-using System.Security;
-using System.Runtime.InteropServices;
-using System.Windows.Forms;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Security;
+using System.Text;
+using System.Windows.Forms;
 
 using KeePass.UI;
 
@@ -79,14 +79,14 @@ namespace KeePass.Native
 		[DllImport("User32.dll")]
 		internal static extern int GetWindowLong(IntPtr hWnd, int nIndex);
 
-		[DllImport("User32.dll", SetLastError = true)]
-		internal static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+		// [DllImport("User32.dll", SetLastError = true)]
+		// internal static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
 
-		[DllImport("User32.dll", EntryPoint = "GetClassLong")]
-		private static extern IntPtr GetClassLongPtr32(IntPtr hWnd, int nIndex);
+		[DllImport("User32.dll", CharSet = CharSet.Auto, ExactSpelling = false)]
+		private static extern IntPtr GetClassLong(IntPtr hWnd, int nIndex);
 
-		[DllImport("User32.dll", EntryPoint = "GetClassLongPtr")]
-		private static extern IntPtr GetClassLongPtr64(IntPtr hWnd, int nIndex);
+		[DllImport("User32.dll", CharSet = CharSet.Auto, ExactSpelling = false)]
+		private static extern IntPtr GetClassLongPtr(IntPtr hWnd, int nIndex);
 
 		// [DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Auto)]
 		// private static extern int GetClassName(IntPtr hWnd,
@@ -100,12 +100,18 @@ namespace KeePass.Native
 		[return: MarshalAs(UnmanagedType.Bool)]
 		internal static extern bool IsZoomed(IntPtr hWnd);
 
-		[DllImport("User32.dll", SetLastError = true)]
+		[DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Auto,
+			ExactSpelling = false)]
 		private static extern int GetWindowTextLength(IntPtr hWnd);
 
-		[DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-		private static extern int GetWindowText(IntPtr hWnd,
-			StringBuilder lpString, int nMaxCount);
+		// [DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Auto,
+		//	ExactSpelling = false)]
+		// private static extern int GetWindowText(IntPtr hWnd,
+		//	StringBuilder lpString, int nMaxCount);
+		[DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Auto,
+			ExactSpelling = false)]
+		private static extern int GetWindowText(IntPtr hWnd, IntPtr lpString,
+			int nMaxCount);
 
 		[DllImport("User32.dll", SetLastError = true)]
 		[return: MarshalAs(UnmanagedType.Bool)]
@@ -216,14 +222,14 @@ namespace KeePass.Native
 		[DllImport("User32.dll", SetLastError = true)]
 		internal static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
 
-		[DllImport("User32.dll", SetLastError = true)]
-		internal static extern IntPtr GetClipboardData(uint uFormat);
+		// [DllImport("User32.dll", SetLastError = true)]
+		// internal static extern IntPtr GetClipboardData(uint uFormat);
 
 		[DllImport("User32.dll", SetLastError = true, CharSet = CharSet.Auto)]
 		internal static extern uint RegisterClipboardFormat(string lpszFormat);
 
-		[DllImport("User32.dll")]
-		internal static extern uint GetClipboardSequenceNumber();
+		// [DllImport("User32.dll")]
+		// internal static extern uint GetClipboardSequenceNumber();
 
 		// [DllImport("User32.dll")]
 		// internal static extern IntPtr GetClipboardOwner();
@@ -416,10 +422,10 @@ namespace KeePass.Native
 		internal static extern bool PlaySound(string pszSound, IntPtr hmod,
 			uint fdwSound);
 
-		[DllImport("Shell32.dll", CharSet = CharSet.Auto)]
-		internal static extern IntPtr ShellExecute(IntPtr hwnd,
-			string lpOperation, string lpFile, string lpParameters,
-			string lpDirectory, int nShowCmd);
+		// [DllImport("Shell32.dll", CharSet = CharSet.Auto)]
+		// internal static extern IntPtr ShellExecute(IntPtr hwnd,
+		//	string lpOperation, string lpFile, string lpParameters,
+		//	string lpDirectory, int nShowCmd);
 
 		[DllImport("User32.dll", CharSet = CharSet.Auto)]
 		internal static extern int MessageBox(IntPtr hWnd, string lpText,

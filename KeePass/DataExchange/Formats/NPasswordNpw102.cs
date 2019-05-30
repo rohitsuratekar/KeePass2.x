@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -60,7 +60,7 @@ namespace KeePass.DataExchange.Formats
 
 		private const string ElemUnsupp0 = "settings";
 
-		private const string Password2Key = PwDefs.PasswordField + " 2";
+		private static readonly string Password2Key = PwDefs.PasswordField + " 2";
 
 		private static Dictionary<string, string> m_dAutoTypeConv = null;
 
@@ -113,7 +113,7 @@ namespace KeePass.DataExchange.Formats
 			ms = new MemoryStream(pbDataUtf8, false);
 			StreamReader sr = new StreamReader(ms, StrUtil.Utf8);
 
-			XmlDocument xmlDoc = new XmlDocument();
+			XmlDocument xmlDoc = XmlUtilEx.CreateXmlDocument();
 			xmlDoc.Load(sr);
 
 			XmlNode xmlRoot = xmlDoc.DocumentElement;

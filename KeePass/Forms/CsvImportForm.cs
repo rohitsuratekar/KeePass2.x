@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,11 +20,11 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
+using System.Globalization;
 using System.Text;
 using System.Windows.Forms;
-using System.Globalization;
-using System.Diagnostics;
 
 using KeePass.App;
 using KeePass.DataExchange;
@@ -112,7 +112,7 @@ namespace KeePass.Forms
 			// Callable from KPScript without parent form
 			Debug.Assert(this.StartPosition == FormStartPosition.CenterScreen);
 
-			this.Icon = Properties.Resources.KeePass;
+			this.Icon = AppIcons.Default;
 			this.Text = KPRes.GenericCsvImporter + " - " + PwDefs.ShortProductName;
 
 			// FontUtil.AssignDefaultBold(m_grpSyntax);
@@ -239,8 +239,8 @@ namespace KeePass.Forms
 					m_cmbFieldFormat.Items.Add(strPre);
 
 				if(t == CsvFieldType.Group)
-					m_lblFieldFormat.Text = KPRes.Separator + ":";
-				else m_lblFieldFormat.Text = KPRes.Format + ":";
+					UIUtil.SetText(m_lblFieldFormat, KPRes.Separator + ":");
+				else UIUtil.SetText(m_lblFieldFormat, KPRes.Format + ":");
 			}
 			m_tLastCsvType = t;
 
@@ -279,7 +279,8 @@ namespace KeePass.Forms
 		{
 			if(m_bInitializing) return;
 
-			PerformImport(new PwGroup(true, true), true);
+			try { PerformImport(new PwGroup(true, true), true); }
+			catch(Exception) { Debug.Assert(false); }
 		}
 
 		private void ProcessResize()
@@ -445,7 +446,7 @@ namespace KeePass.Forms
 
 			string strUrl = null;
 			if(IsTimeField(t))
-				strUrl = @"http://msdn.microsoft.com/en-us/library/8kb3ddd4.aspx";
+				strUrl = "https://msdn.microsoft.com/en-us/library/8kb3ddd4.aspx";
 			// else if(t == CsvFieldType.Group)
 			// {
 			//	AppHelp.ShowHelp(AppDefs.HelpTopics.ImportExport,
@@ -454,8 +455,7 @@ namespace KeePass.Forms
 			// }
 			else { Debug.Assert(false); return; }
 
-			try { Process.Start(strUrl); }
-			catch(Exception ex) { MessageService.ShowWarning(strUrl, ex.Message); }
+			WinUtil.OpenUrl(strUrl, null);
 		}
 
 		private void OnBtnFieldAdd(object sender, EventArgs e)
@@ -774,7 +774,8 @@ namespace KeePass.Forms
 
 		private void OnBtnOK(object sender, EventArgs e)
 		{
-			PerformImport(m_pwDatabase.RootGroup, false);
+			try { PerformImport(m_pwDatabase.RootGroup, false); }
+			catch(Exception ex) { MessageService.ShowWarning(ex); }
 		}
 
 		private void OnFieldSepSelectedIndexChanged(object sender, EventArgs e)

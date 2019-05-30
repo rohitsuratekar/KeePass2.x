@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -25,8 +25,6 @@ using System.Diagnostics;
 using KeePassLib;
 using KeePassLib.Interfaces;
 
-using SprRefsCache = System.Collections.Generic.Dictionary<string, string>;
-
 namespace KeePass.Util.Spr
 {
 	[Flags]
@@ -50,15 +48,16 @@ namespace KeePass.Util.Spr
 		Comments = 0x2000,
 		TextTransforms = 0x10000,
 		Env = 0x20000, // {BASE}, ...
+		Run = 0x40000, // Running other (console) applications
 
 		ExtActive = 0x4000, // Active transformations provided by plugins
 		ExtNonActive = 0x8000, // Non-active transformations provided by plugins
 
-		// Next free: 0x40000
-		All = 0x3FFFF,
+		// Next free: 0x80000
+		All = 0x7FFFF,
 
 		// Internal:
-		UIInteractive = SprCompileFlags.PickChars,
+		UIInteractive = (SprCompileFlags.PickChars | SprCompileFlags.Run),
 		StateChanging = (SprCompileFlags.NewPassword | SprCompileFlags.HmacOtp),
 
 		Active = (SprCompileFlags.UIInteractive | SprCompileFlags.StateChanging |
@@ -113,11 +112,11 @@ namespace KeePass.Util.Spr
 			set { m_bMakeAT = value; }
 		}
 
-		private bool m_bMakeCmdQuotes = false;
-		public bool EncodeQuotesForCommandLine
+		private bool m_bMakeCmd = false;
+		public bool EncodeForCommandLine
 		{
-			get { return m_bMakeCmdQuotes; }
-			set { m_bMakeCmdQuotes = value; }
+			get { return m_bMakeCmd; }
+			set { m_bMakeCmd = value; }
 		}
 
 		private bool m_bForcePlainTextPasswords = true;
@@ -134,13 +133,13 @@ namespace KeePass.Util.Spr
 			set { m_flags = value; }
 		}
 
-		private SprRefsCache m_refsCache = new SprRefsCache();
+		private SprRefCache m_refCache = new SprRefCache();
 		/// <summary>
 		/// Used internally by <c>SprEngine</c>; don't modify it.
 		/// </summary>
-		internal SprRefsCache RefsCache
+		internal SprRefCache RefCache
 		{
-			get { return m_refsCache; }
+			get { return m_refCache; }
 		}
 
 		// private bool m_bNoUrlSchemeOnce = false;
@@ -161,18 +160,18 @@ namespace KeePass.Util.Spr
 		}
 
 		public SprContext(PwEntry pe, PwDatabase pd, SprCompileFlags fl,
-			bool bEncodeAsAutoTypeSequence, bool bEncodeQuotesForCommandLine)
+			bool bEncodeAsAutoTypeSequence, bool bEncodeForCommandLine)
 		{
-			Init(pe, pd, bEncodeAsAutoTypeSequence, bEncodeQuotesForCommandLine, fl);
+			Init(pe, pd, bEncodeAsAutoTypeSequence, bEncodeForCommandLine, fl);
 		}
 
-		private void Init(PwEntry pe, PwDatabase pd, bool bAT, bool bCmdQuotes,
+		private void Init(PwEntry pe, PwDatabase pd, bool bAT, bool bCmd,
 			SprCompileFlags fl)
 		{
 			m_pe = pe;
 			m_pd = pd;
 			m_bMakeAT = bAT;
-			m_bMakeCmdQuotes = bCmdQuotes;
+			m_bMakeCmd = bCmd;
 			m_flags = fl;
 		}
 
@@ -189,12 +188,12 @@ namespace KeePass.Util.Spr
 			SprContext ctx = Clone();
 
 			ctx.m_bMakeAT = false;
-			ctx.m_bMakeCmdQuotes = false;
+			ctx.m_bMakeCmd = false;
 			// ctx.m_bNoUrlSchemeOnce = false;
 
 			Debug.Assert(object.ReferenceEquals(m_pe, ctx.m_pe));
 			Debug.Assert(object.ReferenceEquals(m_pd, ctx.m_pd));
-			Debug.Assert(object.ReferenceEquals(m_refsCache, ctx.m_refsCache));
+			Debug.Assert(object.ReferenceEquals(m_refCache, ctx.m_refCache));
 			return ctx;
 		}
 	}

@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -24,6 +24,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 
+using KeePassLib.Native;
 using KeePassLib.Utility;
 
 namespace KeePass.Util
@@ -48,6 +49,7 @@ namespace KeePass.Util
 			new List<KeyValuePair<string, bool>>();
 
 		private Dictionary<string, bool> m_dContentLoc = new Dictionary<string, bool>();
+		private readonly object m_oContentLocSync = new object();
 
 		private long m_nThreads = 0;
 
@@ -159,12 +161,23 @@ namespace KeePass.Util
 		{
 			if(string.IsNullOrEmpty(strFilePattern)) { Debug.Assert(false); return; }
 
-			lock(m_dContentLoc)
+			lock(m_oContentLocSync)
 			{
 				if(m_dContentLoc.ContainsKey(strFilePattern) && !bRecursive)
 					return; // Do not overwrite recursive with non-recursive
 
 				m_dContentLoc[strFilePattern] = bRecursive;
+			}
+		}
+
+		public void AddWebBrowserPrintContent()
+		{
+			if(!NativeLib.IsUnix())
+			{
+				// MSHTML may create and forget temporary files under
+				// C:\\Users\\USER\\AppData\\Local\\Temp\\*.htm
+				// (e.g. when printing fails)
+				AddContent("*.htm", false);
 			}
 		}
 
@@ -185,6 +198,38 @@ namespace KeePass.Util
 			}
 
 			return strFile;
+		}
+
+		public string GetTempFileName(string strFileExt)
+		{
+			if(string.IsNullOrEmpty(strFileExt))
+				return GetTempFileName();
+
+			try
+			{
+				while(true)
+				{
+					string str = UrlUtil.EnsureTerminatingSeparator(
+						UrlUtil.GetTempPath(), false);
+					str += "Temp_";
+
+					byte[] pbRandom = new byte[9];
+					Program.GlobalRandom.NextBytes(pbRandom);
+					str += StrUtil.AlphaNumericOnly(Convert.ToBase64String(
+						pbRandom, Base64FormattingOptions.None));
+
+					str += "." + strFileExt;
+
+					if(!File.Exists(str))
+					{
+						m_vFiles.Add(str);
+						return str;
+					}
+				}
+			}
+			catch(Exception) { Debug.Assert(false); }
+
+			return GetTempFileName();
 		}
 
 		public bool Delete(string strTempFile)
@@ -210,7 +255,7 @@ namespace KeePass.Util
 
 		private void ClearContentAsync()
 		{
-			lock(m_dContentLoc)
+			lock(m_oContentLocSync)
 			{
 				if(m_dContentLoc.Count == 0) return;
 			}
@@ -240,7 +285,7 @@ namespace KeePass.Util
 				string strTempPath = UrlUtil.GetTempPath();
 
 				Dictionary<string, bool> dToDo;
-				lock(m_dContentLoc)
+				lock(m_oContentLocSync)
 				{
 					dToDo = new Dictionary<string, bool>(m_dContentLoc);
 					m_dContentLoc.Clear();
@@ -258,7 +303,7 @@ namespace KeePass.Util
 
 					if(!bSuccess)
 					{
-						lock(m_dContentLoc)
+						lock(m_oContentLocSync)
 						{
 							m_dContentLoc[kvp.Key] = kvp.Value; // Try again next time
 						}
@@ -272,11 +317,11 @@ namespace KeePass.Util
 		private bool ClearContentPriv(string strTempPath, string strFilePattern,
 			bool bRecursive, byte[] pbTagA, byte[] pbTagW)
 		{
-			string[] vFiles = Directory.GetFiles(strTempPath, strFilePattern,
+			List<string> lFiles = UrlUtil.GetFilePaths(strTempPath, strFilePattern,
 				(bRecursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly));
 			bool bSuccess = true;
 
-			foreach(string strFile in vFiles)
+			foreach(string strFile in lFiles)
 			{
 				if(string.IsNullOrEmpty(strFile)) continue;
 				if((strFile == ".") || (strFile == "..")) continue;

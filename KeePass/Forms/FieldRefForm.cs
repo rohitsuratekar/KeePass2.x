@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,10 +20,10 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
-using System.Diagnostics;
 
 using KeePass.App;
 using KeePass.Resources;
@@ -71,7 +71,7 @@ namespace KeePass.Forms
 
 			GlobalWindowManager.AddWindow(this);
 
-			this.Icon = Properties.Resources.KeePass;
+			this.Icon = AppIcons.Default;
 
 			UIUtil.SetExplorerTheme(m_lvEntries, true);
 
@@ -219,7 +219,10 @@ namespace KeePass.Forms
 
 		protected override bool ProcessDialogKey(Keys keyData)
 		{
-			if(((keyData == Keys.Return) || (keyData == Keys.Enter)) && m_tbFilter.Focused)
+			Keys k = (keyData & Keys.KeyCode);
+
+			if((k == Keys.Return) && ((keyData & (Keys.Control | Keys.Alt)) ==
+				Keys.None) && m_tbFilter.Focused) // Return == Enter
 				return false; // Forward to TextBox
 
 			return base.ProcessDialogKey(keyData);
@@ -227,9 +230,9 @@ namespace KeePass.Forms
 
 		private void OnFilterKeyDown(object sender, KeyEventArgs e)
 		{
-			if((e.KeyCode == Keys.Return) || (e.KeyCode == Keys.Enter))
+			if(e.KeyCode == Keys.Return) // Return == Enter
 			{
-				e.SuppressKeyPress = true;
+				UIUtil.SetHandled(e, true);
 
 				SearchParameters sp = new SearchParameters();
 				sp.SearchString = m_tbFilter.Text;
@@ -244,8 +247,8 @@ namespace KeePass.Forms
 
 		private void OnFilterKeyUp(object sender, KeyEventArgs e)
 		{
-			if((e.KeyCode == Keys.Return) || (e.KeyCode == Keys.Enter))
-				e.SuppressKeyPress = true;
+			if(e.KeyCode == Keys.Return) // Return == Enter
+				UIUtil.SetHandled(e, true);
 		}
 	}
 }

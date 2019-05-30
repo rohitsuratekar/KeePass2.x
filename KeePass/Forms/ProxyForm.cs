@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -24,11 +24,13 @@ using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 
+using KeePass.App;
 using KeePass.App.Configuration;
 using KeePass.UI;
 
 using KeePassLib;
 using KeePassLib.Serialization;
+using KeePassLib.Utility;
 
 namespace KeePass.Forms
 {
@@ -37,6 +39,8 @@ namespace KeePass.Forms
 		public ProxyForm()
 		{
 			InitializeComponent();
+
+			SecureTextBoxEx.InitEx(ref m_tbPassword);
 			Program.Translation.ApplyTo(this);
 		}
 
@@ -44,7 +48,7 @@ namespace KeePass.Forms
 		{
 			GlobalWindowManager.AddWindow(this);
 
-			this.Icon = Properties.Resources.KeePass;
+			this.Icon = AppIcons.Default;
 
 			ProxyServerType pst = Program.Config.Integration.ProxyType;
 			if(pst == ProxyServerType.None) m_rbNoProxy.Checked = true;
@@ -96,7 +100,7 @@ namespace KeePass.Forms
 			ace.ProxyPort = m_tbPort.Text;
 			ace.ProxyAuthType = pat;
 			ace.ProxyUserName = m_tbUser.Text;
-			ace.ProxyPassword = m_tbPassword.Text;
+			ace.ProxyPassword = m_tbPassword.TextEx.ReadString();
 
 			Program.Config.Apply(AceApplyFlags.Proxy);
 		}

@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,11 +19,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Windows.Forms;
-using System.Runtime.InteropServices;
-using System.Threading;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading;
+using System.Windows.Forms;
 
 using KeePass.Native;
 
@@ -175,18 +175,24 @@ namespace KeePass.Util.SendInputExt
 			SetKeyModifierImplEx(kMod, bDown, false);
 		}
 
-		private void SetKeyModifierImplEx(Keys kMod, bool bDown, bool bRAlt)
+		private void SetKeyModifierImplEx(Keys kMod, bool bDown, bool bRAltForCtrlAlt)
 		{
 			PrepareSend();
 
-			if((kMod & Keys.Shift) != Keys.None)
+			bool bShift = ((kMod & Keys.Shift) != Keys.None);
+			bool bCtrl = ((kMod & Keys.Control) != Keys.None);
+			bool bAlt = ((kMod & Keys.Alt) != Keys.None);
+
+			if(bShift)
 				SendVKeyNative((int)Keys.ShiftKey, null, bDown);
-			if((kMod & Keys.Control) != Keys.None)
-				SendVKeyNative((int)Keys.ControlKey, null, bDown);
-			if((kMod & Keys.Alt) != Keys.None)
+			if(bCtrl && bAlt && bRAltForCtrlAlt)
+				SendVKeyNative((int)Keys.RMenu, null, bDown);
+			else
 			{
-				int vk = (int)(bRAlt ? Keys.RMenu : Keys.Menu);
-				SendVKeyNative(vk, null, bDown);
+				if(bCtrl)
+					SendVKeyNative((int)Keys.ControlKey, null, bDown);
+				if(bAlt)
+					SendVKeyNative((int)Keys.Menu, null, bDown);
 			}
 
 			if(bDown) m_kModCur |= kMod;
@@ -237,7 +243,13 @@ namespace KeePass.Util.SendInputExt
 
 			string[] vEnfKey = new string[] {
 				"MSTSC", // Remote Desktop Connection client
-				"VirtualBox" // VirtualBox does not support VK_PACKET
+				"VirtualBox", // Oracle VirtualBox <= 5
+				"VirtualBoxVM", // Oracle VirtualBox >= 6
+				"VpxClient", // VMware vSphere client
+
+				// VMware Player;
+				// https://sourceforge.net/p/keepass/discussion/329221/thread/c94e0f096e/
+				"VMware-VMX", "VMware-AuthD", "VMPlayer", "VMware-Unity-Helper"
 			};
 			foreach(string strEnfKey in vEnfKey)
 			{
@@ -424,8 +436,8 @@ namespace KeePass.Util.SendInputExt
 		private static bool IsExtendedKeyEx(int vKey)
 		{
 #if DEBUG
-			// http://msdn.microsoft.com/en-us/library/windows/desktop/dd375731.aspx
-			// http://www.win.tue.nl/~aeb/linux/kbd/scancodes-1.html
+			// https://msdn.microsoft.com/en-us/library/windows/desktop/dd375731.aspx
+			// https://www.win.tue.nl/~aeb/linux/kbd/scancodes-1.html
 			const uint m = NativeMethods.MAPVK_VK_TO_VSC;
 			IntPtr h = IntPtr.Zero;
 			Debug.Assert(NativeMethods.MapVirtualKey3((uint)
@@ -609,7 +621,7 @@ namespace KeePass.Util.SendInputExt
 				if(Array.IndexOf<char>(m_vForcedUniChars, ch) >= 0) return false;
 
 				// U+02B0 to U+02FF are Spacing Modifier Letters;
-				// http://www.unicode.org/charts/PDF/U02B0.pdf
+				// https://www.unicode.org/charts/PDF/U02B0.pdf
 				// https://en.wikipedia.org/wiki/Spacing_Modifier_Letters
 				if((ch >= '\u02B0') && (ch <= '\u02FF')) return false;
 			}
@@ -637,28 +649,40 @@ namespace KeePass.Util.SendInputExt
 					return false;
 			}
 
+			bool bShift = ((kMod & Keys.Shift) != Keys.None);
+			bool bCtrl = ((kMod & Keys.Control) != Keys.None);
+			bool bAlt = ((kMod & Keys.Alt) != Keys.None);
+			bool bCapsLock = false;
+
 			// Windows' GetKeyboardState function does not return the
 			// current virtual key array (especially not after changing
 			// them below), thus we build the array on our own
 			byte[] pbState = new byte[256];
-			if((kMod & Keys.Shift) != Keys.None)
+			if(bShift)
 			{
 				pbState[NativeMethods.VK_SHIFT] = 0x80;
 				pbState[NativeMethods.VK_LSHIFT] = 0x80;
 			}
-			if((kMod & Keys.Control) != Keys.None)
+			if(bCtrl && bAlt) // Use RAlt as Ctrl+Alt
 			{
 				pbState[NativeMethods.VK_CONTROL] = 0x80;
-				pbState[NativeMethods.VK_LCONTROL] = 0x80;
-			}
-			if((kMod & Keys.Alt) != Keys.None)
-			{
 				pbState[NativeMethods.VK_MENU] = 0x80;
-				pbState[NativeMethods.VK_RMENU] = 0x80; // See below
+				pbState[NativeMethods.VK_RMENU] = 0x80;
+			}
+			else
+			{
+				if(bCtrl)
+				{
+					pbState[NativeMethods.VK_CONTROL] = 0x80;
+					pbState[NativeMethods.VK_LCONTROL] = 0x80;
+				}
+				if(bAlt)
+				{
+					pbState[NativeMethods.VK_MENU] = 0x80;
+					pbState[NativeMethods.VK_LMENU] = 0x80;
+				}
 			}
 			pbState[NativeMethods.VK_NUMLOCK] = 0x01; // Toggled
-
-			bool bCapsLock = false;
 
 			// The keypress that VkKeyScan returns may require a specific
 			// state of toggle keys, on which it provides no information;
@@ -757,6 +781,20 @@ namespace KeePass.Util.SendInputExt
 						break;
 					}
 				}
+
+				// The workaround attempt for Edge below doesn't work;
+				// Edge simply ignores Unicode packets for '@', Euro sign, etc.
+				/* if(swi.SendMethod == SiSendMethod.Default)
+				{
+					string strTitle = NativeMethods.GetWindowText(hWnd, true);
+
+					// Workaround for Edge;
+					// https://sourceforge.net/p/keepass/discussion/329220/thread/fd3a6776/
+					// The window title is:
+					// Page name + Space + U+200E (left-to-right mark) + "- Microsoft Edge"
+					if(strTitle.EndsWith("- Microsoft Edge", StrUtil.CaseIgnoreCmp))
+						swi.SendMethod = SiSendMethod.UnicodePacket;
+				} */
 			}
 			catch(Exception) { Debug.Assert(false); }
 			finally

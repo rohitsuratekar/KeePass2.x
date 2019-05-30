@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -260,11 +260,11 @@ namespace KeePassLib.Serialization
 #endif
 
 		// Web request methods
-		public const string WrmDeleteFile = "DELETEFILE";
-		public const string WrmMoveFile = "MOVEFILE";
+		public static readonly string WrmDeleteFile = "DELETEFILE";
+		public static readonly string WrmMoveFile = "MOVEFILE";
 
 		// Web request headers
-		public const string WrhMoveFileTo = "MoveFileTo";
+		public static readonly string WrhMoveFileTo = "MoveFileTo";
 
 		public static event EventHandler<IOAccessEventArgs> IOAccessPre;
 
@@ -427,7 +427,7 @@ namespace KeePassLib.Serialization
 					string strInfo = m_strProxyAddr;
 					if(m_strProxyPort.Length > 0)
 						strInfo += ":" + m_strProxyPort;
-					MessageService.ShowWarning(strInfo, ex.Message);
+					MessageService.ShowWarning(strInfo, ex);
 				}
 #endif
 

@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -36,6 +36,8 @@ using KeePassLib.Cryptography;
 using KeePassLib.Interfaces;
 using KeePassLib.Security;
 using KeePassLib.Utility;
+
+using NativeLib = KeePassLib.Native.NativeLib;
 
 namespace KeePass.Util
 {
@@ -136,10 +138,17 @@ namespace KeePass.Util
 				pbModData = OpenExternal(strName, pbData, opt);
 			else { Debug.Assert(false); }
 
+			ProtectedBinary r = null;
 			if((pbModData != null) && !MemUtil.ArraysEqual(pbData, pbModData) &&
 				!opt.ReadOnly)
-				return new ProtectedBinary(pb.IsProtected, pbModData);
-			return null;
+			{
+				if(FileDialogsEx.CheckAttachmentSize(pbModData.LongLength,
+					KPRes.AttachFailed + MessageService.NewParagraph + strName))
+					r = new ProtectedBinary(pb.IsProtected, pbModData);
+			}
+
+			if(pb.IsProtected) MemUtil.ZeroByteArray(pbData);
+			return r;
 		}
 
 		private static BinaryDataHandler ChooseHandler(string strName,
@@ -194,6 +203,8 @@ namespace KeePass.Util
 					}
 				}
 
+				strName = UrlUtil.GetSafeFileName(strName);
+
 				string strFile = strTempDir + strName;
 				File.WriteAllBytes(strFile, pbData);
 
@@ -202,7 +213,7 @@ namespace KeePass.Util
 				catch(Exception) { Debug.Assert(false); }
 
 				ProcessStartInfo psi = new ProcessStartInfo();
-				psi.FileName = strFile;
+				psi.FileName = NativeLib.EncodePath(strFile);
 				psi.UseShellExecute = true;
 				psi.WorkingDirectory = strTempDir;
 
@@ -252,8 +263,7 @@ namespace KeePass.Util
 					sb.AppendLine();
 					sb.AppendLine(KPRes.AttachExtSecDel);
 
-					bImport = MessageService.AskYesNo(sb.ToString(),
-						PwDefs.ShortProductName);
+					bImport = MessageService.AskYesNo(sb.ToString());
 				}
 
 				if(bImport && !opt.ReadOnly)
@@ -304,10 +314,7 @@ namespace KeePass.Util
 					}
 				}
 			}
-			catch(Exception ex)
-			{
-				MessageService.ShowWarning(ex.Message);
-			}
+			catch(Exception ex) { MessageService.ShowWarning(ex); }
 
 			return pbResult;
 		}
@@ -340,11 +347,12 @@ namespace KeePass.Util
 				// Let the main thread finish showing the message box
 				Thread.Sleep(200);
 
-				Process.Start(psi);
+				Process p = Process.Start(psi);
+				if(p != null) p.Dispose();
 			}
 			catch(Exception ex)
 			{
-				try { MessageService.ShowWarning(ex.Message); }
+				try { MessageService.ShowWarning(ex); }
 				catch(Exception) { Debug.Assert(false); }
 			}
 		}
@@ -358,10 +366,7 @@ namespace KeePass.Util
 			if(string.IsNullOrEmpty(strItem)) { Debug.Assert(false); return; }
 			if(pb == null) { Debug.Assert(false); return; }
 
-			byte[] pbData = pb.ReadData();
-			if(pbData == null) { Debug.Assert(false); return; }
-
-			BinaryDataClass bdc = BinaryDataClassifier.Classify(strItem, pbData);
+			BinaryDataClass bdc = BinaryDataClassifier.Classify(strItem, pb);
 
 			BinaryDataOpenOptions oo = new BinaryDataOpenOptions();
 			oo.Handler = BinaryDataHandler.InternalViewer;

@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -374,8 +374,8 @@ namespace KeePassLib.Serialization
 
 				Debug.Assert(m_pwDatabase != null);
 				Debug.Assert(m_pwDatabase.MasterKey != null);
-				ProtectedBinary pbinUser = m_pwDatabase.MasterKey.GenerateKey32(
-					m_pwDatabase.KdfParameters);
+				ProtectedBinary pbinUser = m_pwDatabase.MasterKey.GenerateKey32Ex(
+					m_pwDatabase.KdfParameters, m_slLogger);
 				Debug.Assert(pbinUser != null);
 				if(pbinUser == null)
 					throw new SecurityException(KLRes.InvalidCompositeKey);
@@ -488,7 +488,7 @@ namespace KeePassLib.Serialization
 		{
 			if(pb == null) { Debug.Assert(false); return; }
 
-			if(string.IsNullOrEmpty(strName)) strName = "File.bin";
+			strName = UrlUtil.GetSafeFileName(strName);
 
 			string strPath;
 			int iTry = 1;
@@ -496,8 +496,8 @@ namespace KeePassLib.Serialization
 			{
 				strPath = UrlUtil.EnsureTerminatingSeparator(strSaveDir, false);
 
-				string strExt = UrlUtil.GetExtension(strName);
 				string strDesc = UrlUtil.StripExtension(strName);
+				string strExt = UrlUtil.GetExtension(strName);
 
 				strPath += strDesc;
 				if(iTry > 1)
@@ -510,17 +510,9 @@ namespace KeePassLib.Serialization
 			}
 			while(File.Exists(strPath));
 
-#if !KeePassLibSD
 			byte[] pbData = pb.ReadData();
-			File.WriteAllBytes(strPath, pbData);
-			MemUtil.ZeroByteArray(pbData);
-#else
-			FileStream fs = new FileStream(strPath, FileMode.Create,
-				FileAccess.Write, FileShare.None);
-			byte[] pbData = pb.ReadData();
-			fs.Write(pbData, 0, pbData.Length);
-			fs.Close();
-#endif
+			try { File.WriteAllBytes(strPath, pbData); }
+			finally { if(pb.IsProtected) MemUtil.ZeroByteArray(pbData); }
 		}
 	}
 }

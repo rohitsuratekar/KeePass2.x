@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,12 +19,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Media;
+using System.Security;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Windows.Forms;
 using System.Threading;
-using System.Media;
-using System.Diagnostics;
+using System.Windows.Forms;
 
 using KeePass.App;
 using KeePass.Forms;
@@ -38,6 +39,8 @@ using KeePassLib.Security;
 using KeePassLib.Collections;
 using KeePassLib.Delegates;
 using KeePassLib.Utility;
+
+using NativeLib = KeePassLib.Native.NativeLib;
 
 namespace KeePass.Util
 {
@@ -100,13 +103,13 @@ namespace KeePass.Util
 				// not required:
 
 				// // Enable new SendInput method; see
-				// // http://msdn.microsoft.com/en-us/library/system.windows.forms.sendkeys.aspx
+				// // https://msdn.microsoft.com/en-us/library/system.windows.forms.sendkeys.aspx
 				// ConfigurationManager.AppSettings.Set("SendKeys", "SendInput");
 			}
 			catch(Exception) { Debug.Assert(false); }
 		}
 
-		private static bool MatchWindows(string strFilter, string strWindow)
+		internal static bool MatchWindows(string strFilter, string strWindow)
 		{
 			Debug.Assert(strFilter != null); if(strFilter == null) return false;
 			Debug.Assert(strWindow != null); if(strWindow == null) return false;
@@ -153,7 +156,7 @@ namespace KeePass.Util
 			if(!pweData.GetAutoTypeEnabled()) return false;
 			if(!AppPolicy.Try(AppPolicyId.AutoType)) return false;
 
-			if(KeePassLib.Native.NativeLib.IsUnix())
+			if(NativeLib.IsUnix())
 			{
 				if(!NativeMethods.TryXDoTool())
 				{
@@ -190,11 +193,26 @@ namespace KeePass.Util
 
 			if(args.Sequence.Length > 0)
 			{
+				string strError = null;
 				try { SendInputEx.SendKeysWait(args.Sequence, args.SendObfuscated); }
-				catch(Exception excpAT)
+				catch(SecurityException exSec) { strError = exSec.Message; }
+				catch(Exception ex)
 				{
-					MessageService.ShowWarning(args.Sequence +
-						MessageService.NewParagraph + excpAT.Message);
+					strError = args.Sequence + MessageService.NewParagraph +
+						ex.Message;
+				}
+
+				if(!string.IsNullOrEmpty(strError))
+				{
+					try
+					{
+						MainForm mfP = Program.MainForm;
+						if(mfP != null)
+							mfP.EnsureVisibleForegroundWindow(false, false);
+					}
+					catch(Exception) { Debug.Assert(false); }
+
+					MessageService.ShowWarning(strError);
 				}
 			}
 
@@ -211,6 +229,10 @@ namespace KeePass.Util
 				// SprEngine.Compile might have modified the database;
 				// pd.Modified is set by SprEngine
 				mf.UpdateUI(false, null, false, null, false, null, false);
+
+				if(Program.Config.MainWindow.MinimizeAfterAutoType &&
+					mf.IsCommandTypeInvokable(null, MainForm.AppCommandType.Window))
+					UIUtil.SetWindowState(mf, FormWindowState.Minimized);
 			}
 
 			return true;
@@ -410,7 +432,7 @@ namespace KeePass.Util
 
 		internal static bool IsOwnWindow(IntPtr hWindow)
 		{
-			return ((hWindow == Program.MainForm.Handle) ||
+			return ((hWindow == Program.GetSafeMainWindowHandle()) ||
 				GlobalWindowManager.HasWindow(hWindow));
 		}
 
@@ -423,12 +445,18 @@ namespace KeePass.Util
 			return bValid;
 		}
 
-		public static bool PerformGlobal(List<PwDatabase> vSources,
+		public static bool PerformGlobal(List<PwDatabase> lSources,
 			ImageList ilIcons)
 		{
-			Debug.Assert(vSources != null); if(vSources == null) return false;
+			return PerformGlobal(lSources, ilIcons, null);
+		}
 
-			if(KeePassLib.Native.NativeLib.IsUnix())
+		internal static bool PerformGlobal(List<PwDatabase> lSources,
+			ImageList ilIcons, string strSeq)
+		{
+			if(lSources == null) { Debug.Assert(false); return false; }
+
+			if(NativeLib.IsUnix())
 			{
 				if(!NativeMethods.TryXDoTool(true))
 				{
@@ -466,19 +494,25 @@ namespace KeePass.Util
 
 				List<string> lSeq = GetSequencesForWindow(pe, hWnd, strWindow,
 					pdCurrent, evQueries.EventID);
-				foreach(string strSeq in lSeq)
-				{
+
+				if(!string.IsNullOrEmpty(strSeq) && (lSeq.Count != 0))
 					lCtxs.Add(new AutoTypeCtx(strSeq, pe, pdCurrent));
+				else
+				{
+					foreach(string strSeqCand in lSeq)
+					{
+						lCtxs.Add(new AutoTypeCtx(strSeqCand, pe, pdCurrent));
+					}
 				}
 
 				return true;
 			};
 
-			foreach(PwDatabase pwSource in vSources)
+			foreach(PwDatabase pd in lSources)
 			{
-				if(pwSource.IsOpen == false) continue;
-				pdCurrent = pwSource;
-				pwSource.RootGroup.TraverseTree(TraversalMethod.PreOrder, null, eh);
+				if((pd == null) || !pd.IsOpen) continue;
+				pdCurrent = pd;
+				pd.RootGroup.TraverseTree(TraversalMethod.PreOrder, null, eh);
 			}
 
 			GetSequencesForWindowEnd(evQueries);
@@ -499,10 +533,24 @@ namespace KeePass.Util
 					try { NativeMethods.EnsureForegroundWindow(hWnd); }
 					catch(Exception) { Debug.Assert(false); }
 
-					// Allow target window to handle its activation;
+					int nActDelayMS = TargetActivationDelay;
+					string strWindowT = strWindow.Trim();
+
 					// https://sourceforge.net/p/keepass/discussion/329220/thread/3681f343/
+					// This apparently is only required here (after showing the
+					// auto-type entry selection dialog), not when using the
+					// context menu command in the main window
+					if(strWindowT.EndsWith("Microsoft Edge", StrUtil.CaseIgnoreCmp))
+					{
+						// 700 skips the first 1-2 characters,
+						// 750 sometimes skips the first character
+						nActDelayMS = 1000;
+					}
+
+					// Allow target window to handle its activation
+					// (required by some applications, e.g. Edge)
 					Application.DoEvents();
-					Thread.Sleep(TargetActivationDelay);
+					Thread.Sleep(nActDelayMS);
 					Application.DoEvents();
 
 					AutoType.PerformInternal(ctx, strWindow);
@@ -578,7 +626,7 @@ namespace KeePass.Util
 			}
 			catch(Exception) { hWnd = IntPtr.Zero; strWindow = null; }
 
-			if(!KeePassLib.Native.NativeLib.IsUnix())
+			if(!NativeLib.IsUnix())
 			{
 				if(strWindow == null) { Debug.Assert(false); return false; }
 			}

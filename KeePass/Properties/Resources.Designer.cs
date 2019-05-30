@@ -19,7 +19,7 @@ namespace KeePass.Properties {
     // class via a tool like ResGen or Visual Studio.
     // To add or remove a member, edit your .ResX file then rerun ResGen
     // with the /str option, or rebuild your VS project.
-    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "4.0.0.0")]
+    [global::System.CodeDom.Compiler.GeneratedCodeAttribute("System.Resources.Tools.StronglyTypedResourceBuilder", "16.0.0.0")]
     [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
     [global::System.Runtime.CompilerServices.CompilerGeneratedAttribute()]
     internal class Resources {
@@ -653,6 +653,23 @@ namespace KeePass.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        internal static System.Drawing.Bitmap B16x16_Imp_Bitwarden {
+            get {
+                object obj = ResourceManager.GetObject("B16x16_Imp_Bitwarden", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        internal static System.Drawing.Bitmap B16x16_Imp_Chrome {
+            get {
+                object obj = ResourceManager.GetObject("B16x16_Imp_Chrome", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         internal static System.Drawing.Bitmap B16x16_Imp_CWallet {
             get {
                 object obj = ResourceManager.GetObject("B16x16_Imp_CWallet", resourceCulture);
@@ -983,6 +1000,13 @@ namespace KeePass.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        internal static System.Drawing.Bitmap B16x16_Imp_Steganos20 {
+            get {
+                object obj = ResourceManager.GetObject("B16x16_Imp_Steganos20", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
         internal static System.Drawing.Bitmap B16x16_Imp_StickyPw {
             get {
                 object obj = ResourceManager.GetObject("B16x16_Imp_StickyPw", resourceCulture);
@@ -1503,6 +1527,16 @@ namespace KeePass.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Bitmap.
         /// </summary>
+        internal static System.Drawing.Bitmap B48x35_WritingHand {
+            get {
+                object obj = ResourceManager.GetObject("B48x35_WritingHand", resourceCulture);
+                return ((System.Drawing.Bitmap)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Bitmap.
+        /// </summary>
         internal static System.Drawing.Bitmap B48x48_Ark {
             get {
                 object obj = ResourceManager.GetObject("B48x48_Ark", resourceCulture);
@@ -1773,6 +1807,36 @@ namespace KeePass.Properties {
         /// <summary>
         ///   Looks up a localized resource of type System.Drawing.Icon similar to (Icon).
         /// </summary>
+        internal static System.Drawing.Icon KeePass_G {
+            get {
+                object obj = ResourceManager.GetObject("KeePass_G", resourceCulture);
+                return ((System.Drawing.Icon)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Icon similar to (Icon).
+        /// </summary>
+        internal static System.Drawing.Icon KeePass_R {
+            get {
+                object obj = ResourceManager.GetObject("KeePass_R", resourceCulture);
+                return ((System.Drawing.Icon)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Icon similar to (Icon).
+        /// </summary>
+        internal static System.Drawing.Icon KeePass_Y {
+            get {
+                object obj = ResourceManager.GetObject("KeePass_Y", resourceCulture);
+                return ((System.Drawing.Icon)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Icon similar to (Icon).
+        /// </summary>
         internal static System.Drawing.Icon LockOverlay {
             get {
                 object obj = ResourceManager.GetObject("LockOverlay", resourceCulture);
@@ -1806,6 +1870,36 @@ namespace KeePass.Properties {
         internal static System.Drawing.Icon QuadNormal {
             get {
                 object obj = ResourceManager.GetObject("QuadNormal", resourceCulture);
+                return ((System.Drawing.Icon)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Icon similar to (Icon).
+        /// </summary>
+        internal static System.Drawing.Icon QuadNormal_G {
+            get {
+                object obj = ResourceManager.GetObject("QuadNormal_G", resourceCulture);
+                return ((System.Drawing.Icon)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Icon similar to (Icon).
+        /// </summary>
+        internal static System.Drawing.Icon QuadNormal_R {
+            get {
+                object obj = ResourceManager.GetObject("QuadNormal_R", resourceCulture);
+                return ((System.Drawing.Icon)(obj));
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized resource of type System.Drawing.Icon similar to (Icon).
+        /// </summary>
+        internal static System.Drawing.Icon QuadNormal_Y {
+            get {
+                object obj = ResourceManager.GetObject("QuadNormal_Y", resourceCulture);
                 return ((System.Drawing.Icon)(obj));
             }
         }

@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -131,7 +131,7 @@ namespace KeePassLib
 		}
 
 		/// <summary>
-		/// <c>IOConnection</c> of the currently opened database file.
+		/// <c>IOConnection</c> of the currently open database file.
 		/// Is never <c>null</c>.
 		/// </summary>
 		public IOConnectionInfo IOConnectionInfo
@@ -606,9 +606,8 @@ namespace KeePassLib
 			m_bDatabaseOpened = true;
 			m_bModified = true;
 
-			m_pgRootGroup = new PwGroup(true, true,
-				UrlUtil.StripExtension(UrlUtil.GetFileName(ioConnection.Path)),
-				PwIcon.FolderOpen);
+			m_pgRootGroup = new PwGroup(true, true, UrlUtil.StripExtension(
+				UrlUtil.GetFileName(ioConnection.Path)), PwIcon.FolderOpen);
 			m_pgRootGroup.IsExpanded = true;
 		}
 
@@ -635,15 +634,15 @@ namespace KeePassLib
 				m_pgRootGroup.IsExpanded = true;
 
 				m_pwUserKey = pwKey;
-
 				m_bModified = false;
 
 				KdbxFile kdbx = new KdbxFile(this);
 				kdbx.DetachBinaries = m_strDetachBins;
 
-				Stream s = IOConnection.OpenRead(ioSource);
-				kdbx.Load(s, KdbxFormat.Default, slLogger);
-				s.Close();
+				using(Stream s = IOConnection.OpenRead(ioSource))
+				{
+					kdbx.Load(s, KdbxFormat.Default, slLogger);
+				}
 
 				m_pbHashOfLastIO = kdbx.HashOfFileOnDisk;
 				m_pbHashOfFileOnDisk = kdbx.HashOfFileOnDisk;
@@ -660,8 +659,8 @@ namespace KeePassLib
 		}
 
 		/// <summary>
-		/// Save the currently opened database. The file is written to the location
-		/// it has been opened from.
+		/// Save the currently open database. The file is written to the
+		/// location it has been opened from.
 		/// </summary>
 		/// <param name="slLogger">Logger that recieves status information.</param>
 		public void Save(IStatusLogger slLogger)
@@ -672,17 +671,21 @@ namespace KeePassLib
 			if(m_bUseFileLocks) fl = new FileLock(m_ioSource);
 			try
 			{
-				FileTransactionEx ft = new FileTransactionEx(m_ioSource,
-					m_bUseFileTransactions);
-				Stream s = ft.OpenWrite();
+				KdbxFile kdbx = new KdbxFile(this);
 
-				KdbxFile kdb = new KdbxFile(this);
-				kdb.Save(s, null, KdbxFormat.Default, slLogger);
+				using(FileTransactionEx ft = new FileTransactionEx(m_ioSource,
+					m_bUseFileTransactions))
+				{
+					using(Stream s = ft.OpenWrite())
+					{
+						kdbx.Save(s, null, KdbxFormat.Default, slLogger);
+					}
 
-				ft.CommitWrite();
+					ft.CommitWrite();
+				}
 
-				m_pbHashOfLastIO = kdb.HashOfFileOnDisk;
-				m_pbHashOfFileOnDisk = kdb.HashOfFileOnDisk;
+				m_pbHashOfLastIO = kdbx.HashOfFileOnDisk;
+				m_pbHashOfFileOnDisk = kdbx.HashOfFileOnDisk;
 				Debug.Assert(m_pbHashOfFileOnDisk != null);
 			}
 			finally { if(fl != null) fl.Dispose(); }
@@ -691,16 +694,16 @@ namespace KeePassLib
 		}
 
 		/// <summary>
-		/// Save the currently opened database to a different location. If
+		/// Save the currently open database to a different location. If
 		/// <paramref name="bIsPrimaryNow" /> is <c>true</c>, the specified
 		/// location is made the default location for future saves
 		/// using <c>SaveDatabase</c>.
 		/// </summary>
 		/// <param name="ioConnection">New location to serialize the database to.</param>
-		/// <param name="bIsPrimaryNow">If <c>true</c>, the new location is made the
-		/// standard location for the database. If <c>false</c>, a copy of the currently
-		/// opened database is saved to the specified location, but it isn't
-		/// made the default location (i.e. no lock files will be moved for
+		/// <param name="bIsPrimaryNow">If <c>true</c>, the new location is made
+		/// the standard location for the database. If <c>false</c>, a copy of the
+		/// currently open database is saved to the specified location, but it
+		/// isn't made the default location (i.e. no lock files will be moved for
 		/// example).</param>
 		/// <param name="slLogger">Logger that recieves status information.</param>
 		public void SaveAs(IOConnectionInfo ioConnection, bool bIsPrimaryNow,
@@ -732,8 +735,8 @@ namespace KeePassLib
 		}
 
 		/// <summary>
-		/// Closes the currently opened database. No confirmation message is shown
-		/// before closing. Unsaved changes will be lost.
+		/// Closes the currently open database. No confirmation message
+		/// is shown before closing. Unsaved changes will be lost.
 		/// </summary>
 		public void Close()
 		{
@@ -797,6 +800,12 @@ namespace KeePassLib
 					pgNew.Uuid = pg.Uuid;
 					pgNew.AssignProperties(pg, false, true);
 
+					if(!pgLocalContainer.CanAddGroup(pgNew))
+					{
+						Debug.Assert(false);
+						pgLocalContainer = m_pgRootGroup;
+						pgLocalContainer.CheckCanAddGroup(pgNew);
+					}
 					// pgLocalContainer.AddGroup(pgNew, true);
 					InsertObjectAtBestPos<PwGroup>(pgLocalContainer.Groups, pgNew, ppSrc);
 					pgNew.ParentGroup = pgLocalContainer;
@@ -1083,8 +1092,8 @@ namespace KeePassLib
 
 					if(pgLocal.IsContainedIn(pg)) continue;
 
+					if(!pgLocal.CanAddGroup(pg)) { Debug.Assert(false); continue; }
 					pg.ParentGroup.Groups.Remove(pg);
-
 					// pgLocal.AddGroup(pg, true);
 					InsertObjectAtBestPos<PwGroup>(pgLocal.Groups, pg, ppSrc);
 					pg.ParentGroup = pgLocal;
@@ -1855,10 +1864,7 @@ namespace KeePassLib
 					using(Stream sOut = IOConnection.OpenWrite(iocBk))
 					{
 						MemUtil.CopyStream(sIn, sOut);
-						sOut.Close();
 					}
-
-					sIn.Close();
 				}
 			}
 
@@ -1968,7 +1974,7 @@ namespace KeePassLib
 				if(psB == null) return false;
 
 				// Ignore protection setting, compare values only
-				if(!kvpA.Value.ReadString().Equals(psB.ReadString())) return false;
+				if(!psB.Equals(kvpA.Value, false)) return false;
 			}
 
 			foreach(KeyValuePair<string, ProtectedString> kvpB in b.Strings)
@@ -1979,22 +1985,18 @@ namespace KeePassLib
 				if(psA == null) return false;
 
 				// Must be equal by logic
-				Debug.Assert(kvpB.Value.ReadString().Equals(psA.ReadString()));
+				Debug.Assert(psA.Equals(kvpB.Value, false));
 			}
 
 			if(a.Binaries.UCount != b.Binaries.UCount) return false;
 			foreach(KeyValuePair<string, ProtectedBinary> kvpBin in a.Binaries)
 			{
+				ProtectedBinary pbA = kvpBin.Value;
 				ProtectedBinary pbB = b.Binaries.Get(kvpBin.Key);
 				if(pbB == null) return false;
 
 				// Ignore protection setting, compare values only
-				byte[] pbDataA = kvpBin.Value.ReadData();
-				byte[] pbDataB = pbB.ReadData();
-				bool bBinEq = MemUtil.ArraysEqual(pbDataA, pbDataB);
-				MemUtil.ZeroByteArray(pbDataA);
-				MemUtil.ZeroByteArray(pbDataB);
-				if(!bBinEq) return false;
+				if(!pbB.Equals(pbA, false)) return false;
 			}
 
 			return true;

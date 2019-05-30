@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,13 +19,14 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Text;
 
 using KeePass.Resources;
 
+using KeePassLib.Security;
 using KeePassLib.Utility;
 
 namespace KeePass.Util
@@ -42,7 +43,8 @@ namespace KeePass.Util
 	public static class BinaryDataClassifier
 	{
 		private static readonly string[] m_vTextExtensions = new string[] {
-			"txt", "csv", "c", "cpp", "h", "hpp", "css", "js", "bat"
+			"txt", "csv", "c", "cpp", "h", "hpp", "css", "js", "bat",
+			"ps1"
 		};
 
 		private static readonly string[] m_vRichTextExtensions = new string[] {
@@ -115,12 +117,27 @@ namespace KeePass.Util
 			return BinaryDataClass.Unknown;
 		}
 
+		// Cf. other overload
 		public static BinaryDataClass Classify(string strUrl, byte[] pbData)
 		{
 			BinaryDataClass bdc = ClassifyUrl(strUrl);
 			if(bdc != BinaryDataClass.Unknown) return bdc;
 
 			return ClassifyData(pbData);
+		}
+
+		// Cf. other overload
+		public static BinaryDataClass Classify(string strUrl, ProtectedBinary pb)
+		{
+			BinaryDataClass bdc = ClassifyUrl(strUrl);
+			if(bdc != BinaryDataClass.Unknown) return bdc;
+
+			if(pb == null) throw new ArgumentNullException("pb");
+			byte[] pbData = pb.ReadData();
+			try { bdc = ClassifyData(pbData); }
+			finally { if(pb.IsProtected) MemUtil.ZeroByteArray(pbData); }
+
+			return bdc;
 		}
 
 		public static StrEncodingInfo GetStringEncoding(byte[] pbData,

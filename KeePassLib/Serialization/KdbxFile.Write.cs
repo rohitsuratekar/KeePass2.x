@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -87,6 +87,7 @@ namespace KeePassLib.Serialization
 
 			m_format = fmt;
 			m_slLogger = slLogger;
+			m_xmlWriter = null;
 
 			PwGroup pgRoot = (pgDataSource ?? m_pwDatabase.RootGroup);
 			UTF8Encoding encNoBom = StrUtil.Utf8;
@@ -203,39 +204,25 @@ namespace KeePassLib.Serialization
 					throw new ArgumentOutOfRangeException("fmt");
 				}
 
-#if KeePassUAP
-				XmlWriterSettings xws = new XmlWriterSettings();
-				xws.Encoding = encNoBom;
-				xws.Indent = true;
-				xws.IndentChars = "\t";
-				xws.NewLineOnAttributes = false;
-
-				XmlWriter xw = XmlWriter.Create(sXml, xws);
-#else
-				XmlTextWriter xw = new XmlTextWriter(sXml, encNoBom);
-
-				xw.Formatting = Formatting.Indented;
-				xw.IndentChar = '\t';
-				xw.Indentation = 1;
-#endif
-				m_xmlWriter = xw;
+				m_xmlWriter = XmlUtilEx.CreateXmlWriter(sXml);
 
 				WriteDocument(pgRoot);
 
 				m_xmlWriter.Flush();
-				m_xmlWriter.Close();
 			}
 			finally
 			{
+				CommonCleanUpWrite(lStreams, sHashing);
+
 				if(pbCipherKey != null) MemUtil.ZeroByteArray(pbCipherKey);
 				if(pbHmacKey64 != null) MemUtil.ZeroByteArray(pbHmacKey64);
-
-				CommonCleanUpWrite(lStreams, sHashing);
 			}
 		}
 
 		private void CommonCleanUpWrite(List<Stream> lStreams, HashingStreamEx sHashing)
 		{
+			if(m_xmlWriter != null) { m_xmlWriter.Close(); m_xmlWriter = null; }
+
 			CloseStreams(lStreams);
 
 			Debug.Assert(lStreams.Contains(sHashing)); // sHashing must be closed
@@ -244,7 +231,6 @@ namespace KeePassLib.Serialization
 
 			CleanUpInnerRandomStream();
 
-			m_xmlWriter = null;
 			m_pbHashOfHeader = null;
 		}
 
@@ -434,14 +420,16 @@ namespace KeePassLib.Serialization
 
 				++uCurEntry;
 				if(m_slLogger != null)
+				{
 					if(!m_slLogger.SetProgress((100 * uCurEntry) / uNumEntries))
 						return false;
+				}
 
 				return true;
 			};
 
 			if(!pgRoot.TraverseTree(TraversalMethod.PreOrder, gh, eh))
-				throw new InvalidOperationException();
+				throw new OperationCanceledException();
 
 			while(groupStack.Count > 1)
 			{
@@ -842,9 +830,9 @@ namespace KeePassLib.Serialization
 			{
 				m_xmlWriter.WriteAttributeString(AttrProtected, ValTrue);
 
-				byte[] pbEncoded = value.ReadXorredString(m_randomStream);
-				if(pbEncoded.Length > 0)
-					m_xmlWriter.WriteBase64(pbEncoded, 0, pbEncoded.Length);
+				byte[] pbEnc = value.ReadXorredString(m_randomStream);
+				if(pbEnc.Length > 0)
+					m_xmlWriter.WriteBase64(pbEnc, 0, pbEnc.Length);
 			}
 			else
 			{
@@ -934,9 +922,9 @@ namespace KeePassLib.Serialization
 			{
 				m_xmlWriter.WriteAttributeString(AttrProtected, ValTrue);
 
-				byte[] pbEncoded = value.ReadXorredData(m_randomStream);
-				if(pbEncoded.Length > 0)
-					m_xmlWriter.WriteBase64(pbEncoded, 0, pbEncoded.Length);
+				byte[] pbEnc = value.ReadXorredData(m_randomStream);
+				if(pbEnc.Length > 0)
+					m_xmlWriter.WriteBase64(pbEnc, 0, pbEnc.Length);
 			}
 			else
 			{

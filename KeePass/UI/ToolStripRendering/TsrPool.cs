@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -58,7 +58,7 @@ namespace KeePass.UI.ToolStripRendering
 			catch(Exception) { Debug.Assert(false); fS = fP; }
 
 			// https://sourceforge.net/p/keepass/discussion/329220/thread/fab85f1d/
-			// http://keepass.info/help/kb/tsrstyles_survey.html
+			// https://keepass.info/help/kb/tsrstyles_survey.html
 			TsrFactory[] vPref;
 			if(WinUtil.IsAtLeastWindows10)
 				vPref = new TsrFactory[] { f10, f81, fKP, fP, fS };

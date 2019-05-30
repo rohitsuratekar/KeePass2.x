@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,11 +20,11 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Text;
 using System.Text;
 using System.Windows.Forms;
-using System.Diagnostics;
 
 using KeePass.App;
 using KeePass.App.Configuration;
@@ -47,6 +47,7 @@ namespace KeePass.Forms
 		private byte[] m_pbEditedData = null;
 
 		private bool m_bModified = false;
+		private bool m_bURtfWithHighChar = false;
 
 		private uint m_uBlockEvents = 0;
 		private Stack<KeyValuePair<int, int>> m_lSelections =
@@ -95,12 +96,11 @@ namespace KeePass.Forms
 
 			GlobalWindowManager.AddWindow(this);
 
-			this.Icon = Properties.Resources.KeePass;
+			this.Icon = AppIcons.Default;
 			this.DoubleBuffered = true;
 
-			string strRect = Program.Config.UI.DataEditorRect;
-			if(strRect.Length > 0) UIUtil.SetWindowScreenRect(this, strRect);
-			m_strInitialFormRect = UIUtil.GetWindowScreenRect(this);
+			m_strInitialFormRect = UIUtil.SetWindowScreenRectEx(this,
+				Program.Config.UI.DataEditorRect);
 
 			m_bdc = BinaryDataClassifier.Classify(m_strDataDesc, m_pbData);
 			uint uStartOffset;
@@ -118,7 +118,7 @@ namespace KeePass.Forms
 			++m_uBlockEvents;
 
 			UIUtil.AssignShortcut(m_menuFileSave, Keys.Control | Keys.S);
-			m_menuFileExit.ShortcutKeyDisplayString = KPRes.KeyboardKeyEsc;
+			UIUtil.AssignShortcut(m_menuFileExit, Keys.Escape, null, true);
 
 			UIUtil.ConfigureTbButton(m_tbFileSave, KPRes.Save, null, m_menuFileSave);
 			UIUtil.ConfigureTbButton(m_tbEditCut, KPRes.Cut, null);
@@ -157,7 +157,7 @@ namespace KeePass.Forms
 				{
 					if(strData.Length > 0)
 					{
-						m_rtbText.Rtf = strData;
+						m_rtbText.Rtf = StrUtil.RtfFix(strData);
 						bDefaultFont = false;
 					}
 					else m_rtbText.Text = string.Empty;
@@ -219,7 +219,7 @@ namespace KeePass.Forms
 
 			this.Text = (((m_strDataDesc.Length > 0) ? (m_strDataDesc +
 				(m_bModified ? "*" : string.Empty) + " - ") : string.Empty) +
-				PwDefs.ShortProductName + " " + KPRes.DataEditor);
+				KPRes.DataEditorKP);
 
 			// m_menuViewFont.Enabled = (m_bdc == BinaryDataClass.Text);
 			UIUtil.SetChecked(m_menuViewWordWrap, m_rtbText.WordWrap);
@@ -276,7 +276,15 @@ namespace KeePass.Forms
 		private void OnFileSave(object sender, EventArgs e)
 		{
 			if(m_bdc == BinaryDataClass.RichText)
-				m_pbEditedData = StrUtil.Utf8.GetBytes(m_rtbText.Rtf);
+			{
+				string strRtf = m_rtbText.Rtf;
+
+				if(StrUtil.RtfIsURtf(strRtf))
+					m_bURtfWithHighChar = StrUtil.ContainsHighChar(m_rtbText.Text);
+				else m_bURtfWithHighChar = false;
+
+				m_pbEditedData = StrUtil.Utf8.GetBytes(StrUtil.RtfFix(strRtf));
+			}
 			else
 			{
 				string strData = m_rtbText.Text;
@@ -296,10 +304,34 @@ namespace KeePass.Forms
 					OnFileSave(sender, EventArgs.Empty);
 			}
 
+			if(m_bURtfWithHighChar && (m_pbEditedData != null) &&
+				!MemUtil.ArraysEqual(m_pbEditedData, m_pbData))
+			{
+				string strUrl = AppHelp.GetOnlineUrl(AppDefs.HelpTopics.KbFaq,
+					AppDefs.HelpTopics.KbFaqURtf);
+				string strLink = VistaTaskDialog.CreateLink(strUrl, strUrl);
+				string strMsg = KPRes.URtfProblem + MessageService.NewParagraph +
+					KPRes.URtfCheck + MessageService.NewParagraph +
+					KPRes.URtfSuggestion + MessageService.NewParagraph +
+					KPRes.MoreInfo + ":" + MessageService.NewLine;
+
+				VistaTaskDialog dlg = new VistaTaskDialog();
+				dlg.AddButton((int)DialogResult.Cancel, KPRes.Ok, null);
+				dlg.CommandLinks = false;
+				dlg.Content = strMsg + strLink;
+				dlg.DefaultButtonID = (int)DialogResult.Cancel;
+				dlg.EnableHyperlinks = true;
+				dlg.SetIcon(VtdIcon.Warning);
+				dlg.WindowTitle = PwDefs.ShortProductName;
+
+				if(!dlg.ShowDialog())
+					MessageService.ShowWarning(strMsg + strUrl);
+			}
+
 			Debug.Assert(m_uBlockEvents == 0);
 
 			string strRect = UIUtil.GetWindowScreenRect(this);
-			if(strRect != m_strInitialFormRect)
+			if(strRect != m_strInitialFormRect) // Don't overwrite ""
 				Program.Config.UI.DataEditorRect = strRect;
 
 			m_ctxText.Detach();
@@ -410,11 +442,6 @@ namespace KeePass.Forms
 			}
 		}
 
-		private void OnTextLinkClicked(object sender, LinkClickedEventArgs e)
-		{
-			WinUtil.OpenUrl(e.LinkText, null);
-		}
-
 		private void OnFileExit(object sender, EventArgs e)
 		{
 			this.DialogResult = DialogResult.OK;
@@ -510,14 +537,20 @@ namespace KeePass.Forms
 
 		private void OnFontComboKeyDown(object sender, KeyEventArgs e)
 		{
-			if((e.KeyCode == Keys.Enter) || (e.KeyCode == Keys.Return))
+			if(e.KeyCode == Keys.Return) // Return == Enter
+			{
+				UIUtil.SetHandled(e, true);
 				OnFontComboSelectedIndexChanged(sender, e);
+			}
 		}
 
 		private void OnFontSizeComboKeyDown(object sender, KeyEventArgs e)
 		{
-			if((e.KeyCode == Keys.Enter) || (e.KeyCode == Keys.Return))
+			if(e.KeyCode == Keys.Return) // Return == Enter
+			{
+				UIUtil.SetHandled(e, true);
 				OnFontSizeComboSelectedIndexChanged(sender, e);
+			}
 		}
 
 		private void OnEditCut(object sender, EventArgs e)
@@ -631,17 +664,16 @@ namespace KeePass.Forms
 
 		private void OnTextFindKeyDown(object sender, KeyEventArgs e)
 		{
-			if((e.KeyCode == Keys.Enter) || (e.KeyCode == Keys.Return))
+			if(e.KeyCode == Keys.Return) // Return == Enter
 			{
 				UIUtil.SetHandled(e, true);
-
 				OnTextFind();
 			}
 		}
 
 		private void OnTextFindKeyUp(object sender, KeyEventArgs e)
 		{
-			if((e.KeyCode == Keys.Enter) || (e.KeyCode == Keys.Return))
+			if(e.KeyCode == Keys.Return) // Return == Enter
 				UIUtil.SetHandled(e, true);
 		}
 

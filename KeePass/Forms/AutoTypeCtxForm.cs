@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,10 +20,10 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
-using System.Diagnostics;
 
 using KeePass.App;
 using KeePass.App.Configuration;
@@ -74,13 +74,14 @@ namespace KeePass.Forms
 
 			GlobalWindowManager.AddWindow(this);
 
+			Debug.Assert(!m_lblText.AutoSize); // For RTL support
 			m_lblText.Text = KPRes.AutoTypeEntrySelectionDescLong2;
-			this.Text = KPRes.AutoTypeEntrySelection;
-			this.Icon = Properties.Resources.KeePass;
 
-			string strRect = Program.Config.UI.AutoTypeCtxRect;
-			if(strRect.Length > 0) UIUtil.SetWindowScreenRect(this, strRect);
-			m_strInitialFormRect = UIUtil.GetWindowScreenRect(this);
+			this.Text = KPRes.AutoTypeEntrySelection;
+			this.Icon = AppIcons.Default;
+
+			m_strInitialFormRect = UIUtil.SetWindowScreenRectEx(this,
+				Program.Config.UI.AutoTypeCtxRect);
 
 			UIUtil.SetExplorerTheme(m_lvItems, true);
 
@@ -98,7 +99,7 @@ namespace KeePass.Forms
 			ProcessResize();
 			this.BringToFront();
 			this.Activate();
-			UIUtil.SetFocus(m_lvItems, this);
+			UIUtil.SetFocus(m_lvItems, this, true);
 		}
 
 		private void RecreateEntryList()
@@ -125,7 +126,7 @@ namespace KeePass.Forms
 				Program.Config.UI.AutoTypeCtxColumnWidths = strColWidths;
 
 			string strRect = UIUtil.GetWindowScreenRect(this);
-			if(strRect != m_strInitialFormRect)
+			if(strRect != m_strInitialFormRect) // Don't overwrite ""
 				Program.Config.UI.AutoTypeCtxRect = strRect;
 
 			DestroyToolsContextMenu();
@@ -279,7 +280,7 @@ namespace KeePass.Forms
 		private void OnBtnTools(object sender, EventArgs e)
 		{
 			RecreateToolsContextMenu();
-			m_ctxTools.Show(m_btnTools, 0, m_btnTools.Height);
+			m_ctxTools.ShowEx(m_btnTools);
 		}
 	}
 }

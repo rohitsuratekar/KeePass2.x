@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -25,6 +25,7 @@ using System.Drawing;
 using System.Text;
 using System.Windows.Forms;
 
+using KeePass.App;
 using KeePass.Native;
 using KeePass.Resources;
 using KeePass.UI;
@@ -93,7 +94,7 @@ namespace KeePass.Forms
 			if(strTitle.Length > 0) strTitleEx += " - ";
 			strTitleEx += PwDefs.ShortProductName;
 
-			this.Icon = Properties.Resources.KeePass;
+			this.Icon = AppIcons.Default;
 			this.Text = strTitleEx;
 
 			BannerFactory.CreateBannerEx(this, m_bannerImage,
@@ -141,7 +142,7 @@ namespace KeePass.Forms
 			this.Activate();
 			if(m_lvFields.Items.Count > 0)
 				UIUtil.SetFocusedItem(m_lvFields, m_lvFields.Items[0], true);
-			UIUtil.SetFocus(m_lvFields, this);
+			UIUtil.SetFocus(m_lvFields, this, true);
 		}
 
 		private void OnFormClosed(object sender, FormClosedEventArgs e)

@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -51,21 +51,21 @@ namespace KeePass.Plugins
 		{
 			if(plgxOutInfo == null) throw new ArgumentNullException("plgxOutInfo");
 
-			string[] vCsproj = UrlUtil.GetFilePaths(strDirPath, "*.csproj",
-				SearchOption.AllDirectories).ToArray();
-			if(vCsproj.Length == 1)
+			List<string> lCsproj = UrlUtil.GetFilePaths(strDirPath, "*.csproj",
+				SearchOption.AllDirectories);
+			if(lCsproj.Count == 1)
 			{
 				plgxOutInfo.ProjectType = PlgxProjectType.CSharp;
-				PlgxCsprojLoader.Load(vCsproj[0], plgxOutInfo);
+				PlgxCsprojLoader.Load(lCsproj[0], plgxOutInfo);
 				return;
 			}
 
-			// string[] vVbproj = UrlUtil.GetFilePaths(strDirPath, "*.vbproj",
-			//	SearchOption.AllDirectories).ToArray();
-			// if(vVbproj.Length == 1)
+			// List<string> lVbproj = UrlUtil.GetFilePaths(strDirPath, "*.vbproj",
+			//	SearchOption.AllDirectories);
+			// if(lVbproj.Count == 1)
 			// {
 			//	plgxOutInfo.ProjectType = PlgxProjectType.VisualBasic;
-			//	PlgxCsprojLoader.Load(vVbproj[0], plgxOutInfo);
+			//	PlgxCsprojLoader.Load(lVbproj[0], plgxOutInfo);
 			//	return;
 			// }
 
@@ -78,7 +78,7 @@ namespace KeePass.Plugins
 
 			plgxOutInfo.CsprojFilePath = strFilePath;
 
-			XmlDocument doc = new XmlDocument();
+			XmlDocument doc = XmlUtilEx.CreateXmlDocument();
 			doc.Load(strFilePath);
 
 			ReadProject(doc.DocumentElement, plgxOutInfo);

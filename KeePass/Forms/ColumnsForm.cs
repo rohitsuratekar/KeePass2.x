@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,11 +20,11 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Text;
-using System.Windows.Forms;
 using System.Threading;
-using System.Diagnostics;
+using System.Windows.Forms;
 
 using KeePass.App;
 using KeePass.App.Configuration;
@@ -58,7 +58,7 @@ namespace KeePass.Forms
 			BannerFactory.CreateBannerEx(this, m_bannerImage,
 				Properties.Resources.B48x48_View_Detailed,
 				KPRes.ConfigureColumns, KPRes.ConfigureColumnsDesc);
-			this.Icon = Properties.Resources.KeePass;
+			this.Icon = AppIcons.Default;
 			this.Text = KPRes.ConfigureColumns;
 
 			float fWidth = (float)(m_lvColumns.ClientRectangle.Width -
@@ -224,6 +224,7 @@ namespace KeePass.Forms
 			AddStdAceColumn(l, AceColumnType.OverrideUrl);
 			AddStdAceColumn(l, AceColumnType.Tags);
 			AddStdAceColumn(l, AceColumnType.ExpiryTimeDateOnly);
+			AddStdAceColumn(l, AceColumnType.LastPasswordModTime);
 
 			d.Clear();
 			// Add active plugin columns (including those of uninstalled plugins)
@@ -303,9 +304,11 @@ namespace KeePass.Forms
 
 		private void OnBtnOK(object sender, EventArgs e)
 		{
-			List<AceColumn> l = Program.Config.MainWindow.EntryListColumns;
-			l.Clear();
+			AceMainWindow mw = Program.Config.MainWindow;
+			List<AceColumn> l = mw.EntryListColumns;
+			List<AceColumn> lOld = new List<AceColumn>(l);
 
+			l.Clear();
 			foreach(ListViewItem lvi in m_lvColumns.Items)
 			{
 				if(!lvi.Checked) continue;
@@ -315,6 +318,9 @@ namespace KeePass.Forms
 
 				l.Add(c);
 			}
+
+			mw.EntryListColumnDisplayOrder = ComputeNewDisplayOrder(l,
+				lOld, mw.EntryListColumnDisplayOrder);
 		}
 
 		private void OnBtnCancel(object sender, EventArgs e)
@@ -345,6 +351,108 @@ namespace KeePass.Forms
 			}
 
 			UpdateListEx(false);
+		}
+
+		private sealed class AceColumnWithTag
+		{
+			public readonly AceColumn Column;
+			public readonly string TypeNameEx;
+
+			public long Tag;
+
+			public AceColumnWithTag(AceColumn c, long lTag)
+			{
+				this.Column = c;
+				this.TypeNameEx = c.GetTypeNameEx();
+				this.Tag = lTag;
+			}
+
+#if DEBUG
+			public override string ToString()
+			{
+				return (this.TypeNameEx + ", " + this.Tag.ToString());
+			}
+#endif
+
+			public static int CompareByTags(AceColumnWithTag x, AceColumnWithTag y)
+			{
+				return x.Tag.CompareTo(y.Tag);
+			}
+		}
+
+		private static string ComputeNewDisplayOrder(List<AceColumn> lNew,
+			List<AceColumn> lOld, string strOldOrder)
+		{
+			if((lNew == null) || (lOld == null)) { Debug.Assert(false); return string.Empty; }
+			if(string.IsNullOrEmpty(strOldOrder)) return string.Empty;
+
+			List<AceColumnWithTag> lOldS = new List<AceColumnWithTag>();
+			try
+			{
+				int[] vOld = StrUtil.DeserializeIntArray(strOldOrder);
+				if((vOld == null) || (vOld.Length != lOld.Count))
+				{
+					Debug.Assert(false);
+					return string.Empty;
+				}
+
+				for(int i = 0; i < vOld.Length; ++i)
+				{
+					if(lOld[i] == null) { Debug.Assert(false); return string.Empty; }
+					lOldS.Add(new AceColumnWithTag(lOld[i], vOld[i]));
+				}
+
+				lOldS.Sort(AceColumnWithTag.CompareByTags);
+			}
+			catch(Exception) { Debug.Assert(false); return string.Empty; }
+
+			List<AceColumnWithTag> l = new List<AceColumnWithTag>();
+			foreach(AceColumn c in lNew)
+			{
+				if(c != null) l.Add(new AceColumnWithTag(c, 0));
+				else { Debug.Assert(false); return string.Empty; }
+			}
+
+			long m = Math.Max(lNew.Count, lOld.Count);
+
+			// Preserve order of previous columns
+			for(int i = 0; i < lOldS.Count; ++i)
+			{
+				string strOldName = lOldS[i].TypeNameEx;
+
+				foreach(AceColumnWithTag ct in l)
+				{
+					if(ct.TypeNameEx == strOldName)
+					{
+						ct.Tag = m * i;
+						break;
+					}
+				}
+			}
+
+			// Insert new columns based on their default position
+			for(int i = 1; i < l.Count; ++i)
+			{
+				if(l[i].Tag == 0) l[i].Tag = l[i - 1].Tag + 1;
+			}
+
+			l.Sort(AceColumnWithTag.CompareByTags);
+
+			int[] v = new int[lNew.Count];
+			for(int i = 0; i < v.Length; ++i)
+			{
+				for(int j = 0; j < l.Count; ++j)
+				{
+					if(object.ReferenceEquals(l[j].Column, lNew[i]))
+					{
+						v[i] = j;
+						break;
+					}
+				}
+			}
+			Debug.Assert(Array.IndexOf(v, 0) == Array.LastIndexOf(v, 0));
+
+			return StrUtil.SerializeIntArray(v);
 		}
 	}
 }

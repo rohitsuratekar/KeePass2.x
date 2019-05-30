@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,15 +20,15 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Text;
-using System.Windows.Forms;
 using System.Threading;
-using System.Diagnostics;
+using System.Windows.Forms;
 
 using KeePass.App;
-using KeePass.UI;
 using KeePass.Resources;
+using KeePass.UI;
 
 using KeePassLib;
 using KeePassLib.Collections;
@@ -43,13 +43,23 @@ namespace KeePass.Forms
 		private ProtectedStringDictionary m_vStringDict = null;
 		private string m_strStringName = null;
 		private ProtectedString m_psStringInitialValue = null;
-		private RichTextBoxContextMenu m_ctxValue = new RichTextBoxContextMenu();
 		private PwDatabase m_pwContext = null;
 
 		private List<string> m_lSuggestedNames = new List<string>();
-
 		private List<string> m_lStdNames = PwDefs.GetStandardFields();
 		private char[] m_vInvalidChars = new char[] { '{', '}' };
+
+		private RichTextBoxContextMenu m_ctxValue = new RichTextBoxContextMenu();
+
+		private bool m_bReadOnly = false;
+		[Browsable(false)]
+		[DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+		[DefaultValue(false)]
+		public bool ReadOnlyEx
+		{
+			get { return m_bReadOnly; }
+			set { m_bReadOnly = value; }
+		}
 
 		public EditStringForm()
 		{
@@ -97,7 +107,7 @@ namespace KeePass.Forms
 
 			BannerFactory.CreateBannerEx(this, m_bannerImage,
 				Properties.Resources.B48x48_Font, strTitle, strDesc);
-			this.Icon = Properties.Resources.KeePass;
+			this.Icon = AppIcons.Default;
 
 			UIUtil.EnableAutoCompletion(m_cmbStringName, true);
 			UIUtil.PrepareStandardMultilineControl(m_richStringValue, true, true);
@@ -105,13 +115,22 @@ namespace KeePass.Forms
 			if(m_strStringName != null) m_cmbStringName.Text = m_strStringName;
 			if(m_psStringInitialValue != null)
 			{
-				m_richStringValue.Text = m_psStringInitialValue.ReadString();
+				m_richStringValue.Text = StrUtil.NormalizeNewLines(
+					m_psStringInitialValue.ReadString(), true);
 				m_cbProtect.Checked = m_psStringInitialValue.IsProtected;
 			}
 
 			ValidateStringNameUI();
-
 			PopulateNamesComboBox();
+
+			if(m_bReadOnly)
+			{
+				m_cmbStringName.Enabled = false;
+				m_richStringValue.ReadOnly = true;
+				m_cbProtect.Enabled = false;
+				// m_btnOK.Enabled = false; // See ValidateStringNameUI
+			}
+
 			// UIUtil.SetFocus(..., this); // See PopulateNamesComboBox
 		}
 
@@ -122,10 +141,12 @@ namespace KeePass.Forms
 			bool b = ValidateStringName(m_cmbStringName.Text, out strResult,
 				out bError);
 
+			Debug.Assert(!m_lblValidationInfo.AutoSize); // For RTL support
 			m_lblValidationInfo.Text = strResult;
 			if(bError) m_cmbStringName.BackColor = AppDefs.ColorEditError;
 			else m_cmbStringName.ResetBackColor();
 
+			b &= !m_bReadOnly;
 			m_btnOK.Enabled = b;
 			return b;			
 		}
@@ -188,6 +209,8 @@ namespace KeePass.Forms
 
 		private void OnBtnOK(object sender, EventArgs e)
 		{
+			if(m_bReadOnly) { Debug.Assert(false); return; }
+
 			string strName = m_cmbStringName.Text;
 
 			if(!ValidateStringNameUI())
@@ -206,8 +229,20 @@ namespace KeePass.Forms
 					m_vStringDict.Remove(m_strStringName);
 			}
 
-			ProtectedString ps = new ProtectedString(m_cbProtect.Checked,
-				m_richStringValue.Text);
+			string strValue = StrUtil.NormalizeNewLines(m_richStringValue.Text, true);
+			if(m_psStringInitialValue != null)
+			{
+				string strValueIn = m_psStringInitialValue.ReadString();
+
+				// If the initial and the new value differ only by
+				// new-line encoding, use the initial value to avoid
+				// unnecessary changes
+				if(StrUtil.NormalizeNewLines(strValue, false) ==
+					StrUtil.NormalizeNewLines(strValueIn, false))
+					strValue = strValueIn;
+			}
+
+			ProtectedString ps = new ProtectedString(m_cbProtect.Checked, strValue);
 			m_vStringDict.Set(strName, ps);
 		}
 
@@ -268,12 +303,13 @@ namespace KeePass.Forms
 
 		private void PopulateNamesAddFunc()
 		{
-			foreach(string str in m_lSuggestedNames)
-				m_cmbStringName.Items.Add(str);
+			List<object> l = m_lSuggestedNames.ConvertAll<object>(
+				delegate(string str) { return (object)str; });
+			m_cmbStringName.Items.AddRange(l.ToArray());
 
 			if(m_strStringName == null)
-				UIUtil.SetFocus(m_cmbStringName, this);
-			else UIUtil.SetFocus(m_richStringValue, this);
+				UIUtil.SetFocus(m_cmbStringName, this, true);
+			else UIUtil.SetFocus(m_richStringValue, this, true);
 		}
 
 		private void OnBtnHelp(object sender, EventArgs e)
@@ -289,14 +325,6 @@ namespace KeePass.Forms
 		private void OnNameTextChanged(object sender, EventArgs e)
 		{
 			ValidateStringNameUI();
-		}
-
-		protected override bool ProcessDialogKey(Keys keyData)
-		{
-			if(((keyData == Keys.Return) || (keyData == Keys.Enter)) && m_richStringValue.Focused)
-				return false; // Forward to RichTextBox
-
-			return base.ProcessDialogKey(keyData);
 		}
 
 		private void OnFormClosing(object sender, FormClosingEventArgs e)

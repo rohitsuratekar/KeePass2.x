@@ -96,20 +96,20 @@
 			// 
 			this.m_menuFileSave.Image = global::KeePass.Properties.Resources.B16x16_FileSave;
 			this.m_menuFileSave.Name = "m_menuFileSave";
-			this.m_menuFileSave.Size = new System.Drawing.Size(103, 22);
+			this.m_menuFileSave.Size = new System.Drawing.Size(152, 22);
 			this.m_menuFileSave.Text = "&Save";
 			this.m_menuFileSave.Click += new System.EventHandler(this.OnFileSave);
 			// 
 			// m_menuFileSep0
 			// 
 			this.m_menuFileSep0.Name = "m_menuFileSep0";
-			this.m_menuFileSep0.Size = new System.Drawing.Size(100, 6);
+			this.m_menuFileSep0.Size = new System.Drawing.Size(149, 6);
 			// 
 			// m_menuFileExit
 			// 
 			this.m_menuFileExit.Image = global::KeePass.Properties.Resources.B16x16_Exit;
 			this.m_menuFileExit.Name = "m_menuFileExit";
-			this.m_menuFileExit.Size = new System.Drawing.Size(103, 22);
+			this.m_menuFileExit.Size = new System.Drawing.Size(152, 22);
 			this.m_menuFileExit.Text = "&Close";
 			this.m_menuFileExit.Click += new System.EventHandler(this.OnFileExit);
 			// 
@@ -139,7 +139,7 @@
 			// 
 			this.m_menuViewWordWrap.Name = "m_menuViewWordWrap";
 			this.m_menuViewWordWrap.Size = new System.Drawing.Size(152, 22);
-			this.m_menuViewWordWrap.Text = "Word &Wrap";
+			this.m_menuViewWordWrap.Text = "&Word Wrap";
 			this.m_menuViewWordWrap.Click += new System.EventHandler(this.OnViewWordWrap);
 			// 
 			// m_toolFile
@@ -212,6 +212,7 @@
 			this.m_tbEditUndo.Image = global::KeePass.Properties.Resources.B16x16_Undo;
 			this.m_tbEditUndo.ImageTransparentColor = System.Drawing.Color.Magenta;
 			this.m_tbEditUndo.Name = "m_tbEditUndo";
+			this.m_tbEditUndo.RightToLeftAutoMirrorImage = true;
 			this.m_tbEditUndo.Size = new System.Drawing.Size(23, 22);
 			this.m_tbEditUndo.Click += new System.EventHandler(this.OnEditUndo);
 			// 
@@ -221,6 +222,7 @@
 			this.m_tbEditRedo.Image = global::KeePass.Properties.Resources.B16x16_Redo;
 			this.m_tbEditRedo.ImageTransparentColor = System.Drawing.Color.Magenta;
 			this.m_tbEditRedo.Name = "m_tbEditRedo";
+			this.m_tbEditRedo.RightToLeftAutoMirrorImage = true;
 			this.m_tbEditRedo.Size = new System.Drawing.Size(23, 22);
 			this.m_tbEditRedo.Click += new System.EventHandler(this.OnEditRedo);
 			// 
@@ -391,11 +393,10 @@
 			this.m_rtbText.HideSelection = false;
 			this.m_rtbText.Location = new System.Drawing.Point(25, 102);
 			this.m_rtbText.Name = "m_rtbText";
-			this.m_rtbText.Size = new System.Drawing.Size(100, 96);
+			this.m_rtbText.Size = new System.Drawing.Size(331, 177);
 			this.m_rtbText.TabIndex = 0;
 			this.m_rtbText.Text = "";
 			this.m_rtbText.SelectionChanged += new System.EventHandler(this.OnTextSelectionChanged);
-			this.m_rtbText.LinkClicked += new System.Windows.Forms.LinkClickedEventHandler(this.OnTextLinkClicked);
 			this.m_rtbText.TextChanged += new System.EventHandler(this.OnTextTextChanged);
 			// 
 			// DataEditorForm

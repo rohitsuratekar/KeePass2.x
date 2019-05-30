@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,10 +19,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Diagnostics;
-using System.Windows.Forms;
 using System.Drawing;
+using System.Text;
+using System.Windows.Forms;
 
 using KeePass.Ecas;
 using KeePass.Resources;
@@ -43,12 +43,12 @@ namespace KeePass.Ecas
 
 	public static class EcasUtil
 	{
-		public const uint StdCompareEqual = 0;
-		public const uint StdCompareNotEqual = 1;
-		public const uint StdCompareLesser = 2;
-		public const uint StdCompareLesserEqual = 3;
-		public const uint StdCompareGreater = 4;
-		public const uint StdCompareGreaterEqual = 5;
+		public static readonly uint StdCompareEqual = 0;
+		public static readonly uint StdCompareNotEqual = 1;
+		public static readonly uint StdCompareLesser = 2;
+		public static readonly uint StdCompareLesserEqual = 3;
+		public static readonly uint StdCompareGreater = 4;
+		public static readonly uint StdCompareGreaterEqual = 5;
 
 		private static EcasEnum m_enumCompare = null;
 		public static EcasEnum StdCompare
@@ -68,10 +68,10 @@ namespace KeePass.Ecas
 			}
 		}
 
-		public const uint StdStringCompareEquals = 0;
-		public const uint StdStringCompareContains = 1;
-		public const uint StdStringCompareStartsWith = 2;
-		public const uint StdStringCompareEndsWith = 3;
+		public static readonly uint StdStringCompareEquals = 0;
+		public static readonly uint StdStringCompareContains = 1;
+		public static readonly uint StdStringCompareStartsWith = 2;
+		public static readonly uint StdStringCompareEndsWith = 3;
 
 		private static EcasEnum m_enumStringCompare = null;
 		public static EcasEnum StdStringCompare
@@ -113,8 +113,11 @@ namespace KeePass.Ecas
 
 				PwDatabase pd = Program.MainForm.DocumentManager.SafeFindContainerOf(pe);
 
+				// The trigger system does not update the UI itself,
+				// thus ignore state-changing placeholders
 				str = SprEngine.Compile(str, new SprContext(pe, pd,
-					SprCompileFlags.All, false, bSprForCommandLine));
+					(SprCompileFlags.All & ~SprCompileFlags.StateChanging),
+					false, bSprForCommandLine));
 			}
 
 			return str;
@@ -128,6 +131,12 @@ namespace KeePass.Ecas
 			if(iIndex >= vParams.Count) return strDefault; // No assert
 
 			return vParams[iIndex];
+		}
+
+		public static bool GetParamBool(List<string> vParams, int iIndex)
+		{
+			string str = GetParamString(vParams, iIndex, string.Empty);
+			return StrUtil.StringToBool(str);
 		}
 
 		public static uint GetParamUInt(List<string> vParams, int iIndex)
@@ -173,18 +182,26 @@ namespace KeePass.Ecas
 			dg.Rows.Clear();
 			dg.Columns.Clear();
 
-			Color clrBack = dg.DefaultCellStyle.BackColor;
-			Color clrValueBack = dg.DefaultCellStyle.BackColor;
-			if(clrValueBack.GetBrightness() >= 0.5)
-				clrValueBack = UIUtil.DarkenColor(clrValueBack, 0.075);
-			else clrValueBack = UIUtil.LightenColor(clrValueBack, 0.075);
+			Color clrFG = dg.DefaultCellStyle.ForeColor;
+			Color clrBG = dg.DefaultCellStyle.BackColor;
+
+			// https://sourceforge.net/p/keepass/bugs/1808/
+			if(UIUtil.IsDarkColor(clrFG) == UIUtil.IsDarkColor(clrBG))
+				clrFG = (UIUtil.IsDarkColor(clrBG) ? Color.White : Color.Black);
+
+			Color clrValueBG = clrBG;
+			if(UIUtil.IsDarkColor(clrBG))
+				clrValueBG = UIUtil.LightenColor(clrValueBG, 0.075);
+			else clrValueBG = UIUtil.DarkenColor(clrValueBG, 0.075);
 
 			dg.ColumnHeadersVisible = false;
 			dg.RowHeadersVisible = false;
-			dg.GridColor = clrBack;
-			dg.BackgroundColor = clrBack;
-			dg.DefaultCellStyle.SelectionBackColor = clrBack;
-			dg.DefaultCellStyle.SelectionForeColor = dg.DefaultCellStyle.ForeColor;
+			dg.GridColor = clrBG;
+			dg.BackgroundColor = clrBG;
+			dg.DefaultCellStyle.ForeColor = clrFG;
+			dg.DefaultCellStyle.BackColor = clrBG;
+			dg.DefaultCellStyle.SelectionForeColor = clrFG;
+			dg.DefaultCellStyle.SelectionBackColor = clrBG;
 			dg.AllowDrop = false;
 			dg.AllowUserToAddRows = false;
 			dg.AllowUserToDeleteRows = false;
@@ -230,8 +247,7 @@ namespace KeePass.Ecas
 
 					case EcasValueType.Bool:
 						c = new DataGridViewCheckBoxCell(false);
-						(c as DataGridViewCheckBoxCell).Value =
-							StrUtil.StringToBool(strParam);
+						c.Value = StrUtil.StringToBool(strParam);
 						break;
 
 					case EcasValueType.EnumStrings:
@@ -266,10 +282,17 @@ namespace KeePass.Ecas
 						break;
 				}
 
-				if(c != null) cc[1] = c;
-				cc[1].ReadOnly = false;
-				cc[1].Style.BackColor = clrValueBack;
-				cc[1].Style.SelectionBackColor = clrValueBack;
+				if(c != null)
+				{
+					cc[1] = c;
+					cc[1].ReadOnly = false;
+				}
+				else cc[1].ReadOnly = true;
+
+				cc[1].Style.ForeColor = clrFG;
+				cc[1].Style.BackColor = clrValueBG;
+				cc[1].Style.SelectionForeColor = clrFG;
+				cc[1].Style.SelectionBackColor = clrValueBG;
 			}
 
 			// Perform postponed setting of EditMode (cannot set it earlier

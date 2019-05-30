@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,16 +20,16 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
+using System.IO;
 using System.Text;
 using System.Windows.Forms;
-using System.IO;
-using System.Diagnostics;
 
 using KeePass.App;
 using KeePass.App.Configuration;
-using KeePass.UI;
 using KeePass.Resources;
+using KeePass.UI;
 using KeePass.Util;
 using KeePass.Util.XmlSerialization;
 
@@ -51,6 +51,43 @@ namespace KeePass.Forms
 			Program.Translation.ApplyTo(this);
 		}
 
+		public bool InitEx()
+		{
+			try
+			{
+				string strDir = UrlUtil.GetFileDirectory(WinUtil.GetExecutable(),
+					false, true);
+				List<string> l = UrlUtil.GetFilePaths(strDir, "*." +
+					KPTranslation.FileExtension, SearchOption.TopDirectoryOnly);
+				if(l.Count != 0)
+				{
+					string str = KPRes.LngInAppDir + MessageService.NewParagraph;
+
+					const int cMaxFL = 6;
+					for(int i = 0; i < Math.Min(l.Count, cMaxFL); ++i)
+					{
+						if(i == (cMaxFL - 1)) str += "...";
+						else str += l[i];
+						str += MessageService.NewLine;
+					}
+					str += MessageService.NewLine;
+
+					str += KPRes.LngInAppDirNote + MessageService.NewParagraph;
+					str += KPRes.LngInAppDirQ;
+
+					if(MessageService.AskYesNo(str, PwDefs.ShortProductName, true,
+						MessageBoxIcon.Warning))
+					{
+						WinUtil.OpenUrlDirectly(strDir);
+						return false;
+					}
+				}
+			}
+			catch(Exception) { Debug.Assert(false); }
+
+			return true;
+		}
+
 		private void OnFormLoad(object sender, EventArgs e)
 		{
 			GlobalWindowManager.AddWindow(this, this);
@@ -58,8 +95,10 @@ namespace KeePass.Forms
 			BannerFactory.CreateBannerEx(this, m_bannerImage,
 				Properties.Resources.B48x48_Keyboard_Layout,
 				KPRes.SelectLanguage, KPRes.SelectLanguageDesc);
-			this.Icon = Properties.Resources.KeePass;
+			this.Icon = AppIcons.Default;
 			this.Text = KPRes.SelectLanguage;
+
+			UIUtil.SetExplorerTheme(m_lvLanguages, true);
 
 			List<Image> lImg = new List<Image>();
 			lImg.Add(Properties.Resources.B16x16_Browser);
@@ -68,76 +107,121 @@ namespace KeePass.Forms
 				DpiUtil.ScaleIntX(16), DpiUtil.ScaleIntY(16));
 			m_lvLanguages.SmallImageList = m_ilIcons;
 
-			m_lvLanguages.Columns.Add(KPRes.AvailableLanguages);
+			m_lvLanguages.Columns.Add(KPRes.InstalledLanguages);
 			m_lvLanguages.Columns.Add(KPRes.Version);
 			m_lvLanguages.Columns.Add(KPRes.Author);
 			m_lvLanguages.Columns.Add(KPRes.Contact);
+			m_lvLanguages.Columns.Add(KPRes.File);
 
-			ListViewItem lvi = m_lvLanguages.Items.Add("English", 0);
-			lvi.SubItems.Add(PwDefs.VersionString);
-			lvi.SubItems.Add(AppDefs.DefaultTrlAuthor);
-			lvi.SubItems.Add(AppDefs.DefaultTrlContact);
+			KPTranslation trlEng = new KPTranslation();
+			trlEng.Properties.NameEnglish = "English";
+			trlEng.Properties.NameNative = "English";
+			trlEng.Properties.ApplicationVersion = PwDefs.VersionString;
+			trlEng.Properties.AuthorName = AppDefs.DefaultTrlAuthor;
+			trlEng.Properties.AuthorContact = AppDefs.DefaultTrlContact;
 
-			List<string> vList = new List<string>();
-			GetAvailableTranslations(AppConfigSerializer.AppDataDirectory, vList);
-			GetAvailableTranslations(AppConfigSerializer.LocalAppDataDirectory, vList);
+			string strDirA = AceApplication.GetLanguagesDir(AceDir.App, false);
+			string strDirASep = UrlUtil.EnsureTerminatingSeparator(strDirA, false);
+			string strDirU = AceApplication.GetLanguagesDir(AceDir.User, false);
 
-			string strExe = WinUtil.GetExecutable();
-			string strPath = UrlUtil.GetFileDirectory(strExe, false, true);
-			GetAvailableTranslations(strPath, vList);
+			List<KeyValuePair<string, KPTranslation>> lTrls =
+				new List<KeyValuePair<string, KPTranslation>>();
+			lTrls.Add(new KeyValuePair<string, KPTranslation>(string.Empty, trlEng));
+			AddTranslations(strDirA, lTrls);
+			if(WinUtil.IsAppX) AddTranslations(strDirU, lTrls);
+			lTrls.Sort(LanguageForm.CompareTrlItems);
 
-			UIUtil.ResizeColumns(m_lvLanguages, true);
+			foreach(KeyValuePair<string, KPTranslation> kvp in lTrls)
+			{
+				KPTranslationProperties p = kvp.Value.Properties;
+				string strName = p.NameEnglish + " (" + p.NameNative + ")";
+				string strVer = PwDefs.GetTranslationDisplayVersion(p.ApplicationVersion);
+				bool bBuiltIn = ((kvp.Key.Length == 0) || (WinUtil.IsAppX &&
+					kvp.Key.StartsWith(strDirASep, StrUtil.CaseIgnoreCmp)));
+
+				ListViewItem lvi = m_lvLanguages.Items.Add(strName, 0);
+				lvi.SubItems.Add(strVer);
+				lvi.SubItems.Add(p.AuthorName);
+				lvi.SubItems.Add(p.AuthorContact);
+				lvi.SubItems.Add(bBuiltIn ? KPRes.BuiltInU : kvp.Key);
+				lvi.Tag = kvp.Key;
+
+				// try
+				// {
+				//	string nl = MessageService.NewLine;
+				//	lvi.ToolTipText = strName + " " + strVer + nl + p.AuthorName +
+				//		nl + p.AuthorContact + nl + nl + kvp.Key;
+				// }
+				// catch(Exception) { Debug.Assert(false); } // Too long?
+
+				// if(kvp.Key.Equals(Program.Config.Application.GetLanguageFilePath(),
+				//	StrUtil.CaseIgnoreCmp))
+				//	UIUtil.SetFocusedItem(m_lvLanguages, lvi, true);
+			}
+
+			UIUtil.ResizeColumns(m_lvLanguages, new int[] { 5, 2, 5, 5, 3 }, true);
+			UIUtil.SetFocus(m_lvLanguages, this);
 		}
 
-		private void GetAvailableTranslations(string strPath, List<string> vList)
+		private static void AddTranslations(string strDir,
+			List<KeyValuePair<string, KPTranslation>> lTrls)
 		{
 			try
 			{
-				DirectoryInfo di = new DirectoryInfo(strPath);
-				FileInfo[] vFiles = di.GetFiles();
-
-				foreach(FileInfo fi in vFiles)
+				List<string> lFiles = UrlUtil.GetFilePaths(strDir, "*." +
+					KPTranslation.FileExtension, SearchOption.TopDirectoryOnly);
+				foreach(string strFilePath in lFiles)
 				{
-					string strFullName = fi.FullName;
-
-					if(strFullName.EndsWith("." + KPTranslation.FileExtension,
-						StrUtil.CaseIgnoreCmp))
+					try
 					{
-						string strFileName = UrlUtil.GetFileName(strFullName);
+						XmlSerializerEx xs = new XmlSerializerEx(typeof(KPTranslation));
+						KPTranslation t = KPTranslation.Load(strFilePath, xs);
 
-						bool bFound = false;
-						foreach(string strExisting in vList)
-						{
-							if(strExisting.Equals(strFileName, StrUtil.CaseIgnoreCmp))
-							{
-								bFound = true;
-								break;
-							}
-						}
-						if(bFound) continue;
-
-						try
-						{
-							XmlSerializerEx xs = new XmlSerializerEx(typeof(KPTranslation));
-							KPTranslation kpTrl = KPTranslation.Load(strFullName, xs);
-
-							ListViewItem lvi = m_lvLanguages.Items.Add(
-								kpTrl.Properties.NameEnglish, 0);
-							lvi.SubItems.Add(kpTrl.Properties.ApplicationVersion);
-							lvi.SubItems.Add(kpTrl.Properties.AuthorName);
-							lvi.SubItems.Add(kpTrl.Properties.AuthorContact);
-							lvi.Tag = strFileName;
-
-							vList.Add(strFileName);
-						}
-						catch(Exception ex)
-						{
-							MessageService.ShowWarning(ex.Message);
-						}
+						if(t != null)
+							lTrls.Add(new KeyValuePair<string, KPTranslation>(
+								strFilePath, t));
+						else { Debug.Assert(false); }
 					}
+					catch(Exception ex) { MessageService.ShowWarning(ex); }
+				}
+
+				Debug.Assert(KPTranslation.FileExtension != KPTranslation.FileExtension1x);
+
+				lFiles = UrlUtil.GetFilePaths(strDir, "*." +
+					KPTranslation.FileExtension1x, SearchOption.TopDirectoryOnly);
+				foreach(string strFilePath in lFiles)
+				{
+					KPTranslation t = new KPTranslation();
+					t.Properties.NameEnglish = UrlUtil.StripExtension(
+						UrlUtil.GetFileName(strFilePath));
+					t.Properties.NameNative = KPRes.Incompatible;
+					t.Properties.ApplicationVersion = "1.x";
+					t.Properties.AuthorName = "?";
+					t.Properties.AuthorContact = "?";
+
+					lTrls.Add(new KeyValuePair<string, KPTranslation>(
+						strFilePath, t));
 				}
 			}
 			catch(Exception) { } // Directory might not exist or cause access violation
+		}
+
+		private static int CompareTrlItems(KeyValuePair<string, KPTranslation> a,
+			KeyValuePair<string, KPTranslation> b)
+		{
+			KPTranslationProperties pA = a.Value.Properties;
+			KPTranslationProperties pB = b.Value.Properties;
+
+			int c = StrUtil.CompareNaturally(pA.NameEnglish, pB.NameEnglish);
+			if(c != 0) return c;
+
+			c = StrUtil.CompareNaturally(pA.NameNative, pB.NameNative);
+			if(c != 0) return c;
+
+			c = StrUtil.CompareNaturally(pA.ApplicationVersion, pB.ApplicationVersion);
+			if(c != 0) return ((c < 0) ? 1 : -1); // Descending
+
+			return string.Compare(a.Key, b.Key, StrUtil.CaseIgnoreCmp);
 		}
 
 		private void OnBtnClose(object sender, EventArgs e)
@@ -149,23 +233,37 @@ namespace KeePass.Forms
 			ListView.SelectedListViewItemCollection lvic = m_lvLanguages.SelectedItems;
 			if((lvic == null) || (lvic.Count != 1)) return;
 
-			if(lvic[0].Index == 0) // First item selected = English
+			string strSel = ((lvic[0].Tag as string) ?? string.Empty);
+
+			if(strSel.EndsWith("." + KPTranslation.FileExtension1x, StrUtil.CaseIgnoreCmp))
 			{
-				if(Program.Config.Application.LanguageFile.Length == 0)
-					return; // Is English already
+				string strMsg = strSel + MessageService.NewParagraph + KPRes.Lng1xSel +
+					MessageService.NewParagraph + KPRes.Lng2xWeb + MessageService.NewLine;
+				string strUrl = PwDefs.TranslationsUrl;
+				string strVtd = strMsg + VistaTaskDialog.CreateLink(strUrl, strUrl);
 
-				Program.Config.Application.LanguageFile = string.Empty;
+				VistaTaskDialog vtd = new VistaTaskDialog();
+				vtd.AddButton((int)DialogResult.Cancel, KPRes.Ok, null);
+				vtd.Content = strVtd;
+				vtd.DefaultButtonID = (int)DialogResult.Cancel;
+				vtd.EnableHyperlinks = true;
+				vtd.SetIcon(VtdIcon.Warning);
+				vtd.WindowTitle = PwDefs.ShortProductName;
+
+				if(!vtd.ShowDialog())
+					MessageService.ShowWarning(strMsg + strUrl);
+				return;
 			}
-			else
-			{
-				string strSelID = (lvic[0].Tag as string);
-				if(strSelID == Program.Config.Application.LanguageFile) return;
 
-				Program.Config.Application.LanguageFile = strSelID;
-			}
+			// The following creates confusion when the configured language
+			// is different from the loaded language (which can occur when
+			// the language file has been deleted/moved)
+			// if(strSel.Equals(Program.Config.Application.GetLanguageFilePath(),
+			//	StrUtil.CaseIgnoreCmp))
+			//	return; // Is active already, do not close the dialog
 
+			Program.Config.Application.SetLanguageFilePath(strSel);
 			this.DialogResult = DialogResult.OK;
-			this.Close();
 		}
 
 		private void OnFormClosed(object sender, FormClosedEventArgs e)
@@ -184,6 +282,31 @@ namespace KeePass.Forms
 		private void OnBtnGetMore(object sender, EventArgs e)
 		{
 			WinUtil.OpenUrl(PwDefs.TranslationsUrl, null);
+			this.DialogResult = DialogResult.Cancel;
+		}
+
+		private void OnBtnOpenFolder(object sender, EventArgs e)
+		{
+			try
+			{
+				AceDir d = (WinUtil.IsAppX ? AceDir.User : AceDir.App);
+
+				// try
+				// {
+				//	string strU = AceApplication.GetLanguagesDir(AceDir.User, false);
+				//	List<string> l = UrlUtil.GetFilePaths(strU, "*." +
+				//		KPTranslation.FileExtension, SearchOption.TopDirectoryOnly);
+				//	if(l.Count > 0) d = AceDir.User;
+				// }
+				// catch(Exception) { }
+
+				string str = AceApplication.GetLanguagesDir(d, false);
+				if(!Directory.Exists(str)) Directory.CreateDirectory(str);
+
+				WinUtil.OpenUrlDirectly(str);
+				this.DialogResult = DialogResult.Cancel;
+			}
+			catch(Exception ex) { MessageService.ShowWarning(ex); }
 		}
 	}
 }

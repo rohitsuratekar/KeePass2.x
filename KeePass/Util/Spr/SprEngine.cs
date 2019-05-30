@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,11 +20,11 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
+using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.IO;
-using System.Globalization;
-using System.Diagnostics;
 
 using KeePass.App.Configuration;
 using KeePass.Forms;
@@ -94,7 +94,7 @@ namespace KeePass.Util.Spr
 			SprEngine.InitializeStatic();
 
 			if(ctx == null) ctx = new SprContext();
-			ctx.RefsCache.Clear();
+			ctx.RefCache.Clear();
 
 			string str = SprEngine.CompileInternal(strText, ctx, 0);
 
@@ -131,8 +131,13 @@ namespace KeePass.Util.Spr
 			if((ctx.Flags & SprCompileFlags.Comments) != SprCompileFlags.None)
 				str = RemoveComments(str);
 
+			// The following realizes {T-CONV:/Text/Raw/}, which should be
+			// one of the first transformations (except comments)
 			if((ctx.Flags & SprCompileFlags.TextTransforms) != SprCompileFlags.None)
 				str = PerformTextTransforms(str, ctx, uRecursionLevel);
+
+			if((ctx.Flags & SprCompileFlags.Run) != SprCompileFlags.None)
+				str = RunCommands(str, ctx, uRecursionLevel);
 
 			if((ctx.Flags & SprCompileFlags.AppPaths) != SprCompileFlags.None)
 				str = AppLocator.FillPlaceholders(str, ctx);
@@ -366,11 +371,11 @@ namespace KeePass.Util.Spr
 
 			if(ctx != null)
 			{
-				if(ctx.EncodeQuotesForCommandLine)
-					str = SprEncoding.MakeCommandQuotes(str);
+				if(ctx.EncodeForCommandLine)
+					str = SprEncoding.EncodeForCommandLine(str);
 
 				if(ctx.EncodeAsAutoTypeSequence)
-					str = SprEncoding.MakeAutoTypeSequence(str);
+					str = SprEncoding.EncodeAsAutoTypeSequence(str);
 			}
 
 			return str;
@@ -462,7 +467,9 @@ namespace KeePass.Util.Spr
 
 				string strRep = null;
 				if(i == 0) strRep = strDataCmp;
+				// UrlUtil supports prefixes like cmd://
 				else if(i == 1) strRep = UrlUtil.RemoveScheme(strDataCmp);
+				else if(i == 2) strRep = UrlUtil.GetScheme(strDataCmp);
 				else
 				{
 					try
@@ -472,7 +479,7 @@ namespace KeePass.Util.Spr
 						int t;
 						switch(i)
 						{
-							case 2: strRep = uri.Scheme; break;
+							// case 2: strRep = uri.Scheme; break; // No cmd:// support
 							case 3: strRep = uri.Host; break;
 							case 4:
 								strRep = uri.Port.ToString(
@@ -536,7 +543,7 @@ namespace KeePass.Util.Spr
 			int nOffset = 0;
 			for(int iLoop = 0; iLoop < 20; ++iLoop)
 			{
-				str = SprEngine.FillRefsUsingCache(str, ctx);
+				str = ctx.RefCache.Fill(str, ctx);
 
 				int nStart = str.IndexOf(StrRefStart, nOffset, SprEngine.ScMethod);
 				if(nStart < 0) break;
@@ -576,8 +583,8 @@ namespace KeePass.Util.Spr
 					strInnerContent = SprEngine.TransformContent(strInnerContent, ctx);
 
 					// str = str.Substring(0, nStart) + strInnerContent + str.Substring(nEnd + 1);
-					SprEngine.AddRefToCache(strFullRef, strInnerContent, ctx);
-					str = SprEngine.FillRefsUsingCache(str, ctx);
+					ctx.RefCache.Add(strFullRef, strInnerContent, ctx);
+					str = ctx.RefCache.Fill(str, ctx);
 				}
 				else { nOffset = nStart + 1; continue; }
 			}
@@ -625,38 +632,13 @@ namespace KeePass.Util.Spr
 			return ((lFound.UCount > 0) ? lFound.GetAt(0) : null);
 		}
 
-		private static string FillRefsUsingCache(string strText, SprContext ctx)
-		{
-			string str = strText;
-
-			foreach(KeyValuePair<string, string> kvp in ctx.RefsCache)
-			{
-				// str = str.Replace(kvp.Key, kvp.Value);
-				str = StrUtil.ReplaceCaseInsensitive(str, kvp.Key, kvp.Value);
-			}
-
-			return str;
-		}
-
-		private static void AddRefToCache(string strRef, string strValue,
-			SprContext ctx)
-		{
-			if(strRef == null) { Debug.Assert(false); return; }
-			if(strValue == null) { Debug.Assert(false); return; }
-			if(ctx == null) { Debug.Assert(false); return; }
-
-			// Only add if not exists, do not overwrite
-			if(!ctx.RefsCache.ContainsKey(strRef))
-				ctx.RefsCache.Add(strRef, strValue);
-		}
-
 		// internal static bool MightChange(string strText)
 		// {
 		//	if(string.IsNullOrEmpty(strText)) return false;
 		//	return (strText.IndexOfAny(m_vPlhEscapes) >= 0);
 		// }
 
-		internal static bool MightChange(string str)
+		/* internal static bool MightChange(string str)
 		{
 			if(str == null) { Debug.Assert(false); return false; }
 
@@ -671,6 +653,27 @@ namespace KeePass.Util.Spr
 			if(iPFirst >= 0)
 			{
 				int iPLast = str.LastIndexOf('%');
+				if(iPFirst < iPLast) return true;
+			}
+
+			return false;
+		} */
+
+		internal static bool MightChange(char[] v)
+		{
+			if(v == null) { Debug.Assert(false); return false; }
+
+			int iBStart = Array.IndexOf<char>(v, '{');
+			if(iBStart >= 0)
+			{
+				int iBEnd = Array.LastIndexOf<char>(v, '}');
+				if(iBStart < iBEnd) return true;
+			}
+
+			int iPFirst = Array.IndexOf<char>(v, '%');
+			if(iPFirst >= 0)
+			{
+				int iPLast = Array.LastIndexOf<char>(v, '%');
 				if(iPFirst < iPLast) return true;
 			}
 
@@ -759,20 +762,7 @@ namespace KeePass.Util.Spr
 			int iStart;
 			List<string> lParams;
 
-			while(ParseAndRemovePlhWithParams(ref str, ctx, uRecursionLevel,
-				@"{T-REPLACE-RX:", out iStart, out lParams, true))
-			{
-				if(lParams.Count < 2) continue;
-				if(lParams.Count == 2) lParams.Add(string.Empty);
-
-				try
-				{
-					string strNew = Regex.Replace(lParams[0], lParams[1], lParams[2]);
-					strNew = TransformContent(strNew, ctx);
-					str = str.Insert(iStart, strNew);
-				}
-				catch(Exception) { }
-			}
+			// {T-CONV:/Text/Raw/} should be the first transformation
 
 			while(ParseAndRemovePlhWithParams(ref str, ctx, uRecursionLevel,
 				@"{T-CONV:", out iStart, out lParams, true))
@@ -802,11 +792,29 @@ namespace KeePass.Util.Spr
 						strNew = Uri.EscapeDataString(strNew);
 					else if(strCmd == "uri-dec")
 						strNew = Uri.UnescapeDataString(strNew);
+					// "raw": no modification
 
-					strNew = TransformContent(strNew, ctx);
+					if(strCmd != "raw")
+						strNew = TransformContent(strNew, ctx);
+
 					str = str.Insert(iStart, strNew);
 				}
 				catch(Exception) { Debug.Assert(false); }
+			}
+
+			while(ParseAndRemovePlhWithParams(ref str, ctx, uRecursionLevel,
+				@"{T-REPLACE-RX:", out iStart, out lParams, true))
+			{
+				if(lParams.Count < 2) continue;
+				if(lParams.Count == 2) lParams.Add(string.Empty);
+
+				try
+				{
+					string strNew = Regex.Replace(lParams[0], lParams[1], lParams[2]);
+					strNew = TransformContent(strNew, ctx);
+					str = str.Insert(iStart, strNew);
+				}
+				catch(Exception) { }
 			}
 
 			return str;
@@ -834,6 +842,139 @@ namespace KeePass.Util.Spr
 				new ProtectedString(false, pg.Notes), ctx, uRecursionLevel);
 
 			return str;
+		}
+
+		private static string RunCommands(string strText, SprContext ctx,
+			uint uRecursionLevel)
+		{
+			string str = strText;
+			int iStart;
+			List<string> lParams;
+
+			while(ParseAndRemovePlhWithParams(ref str, ctx, uRecursionLevel,
+				@"{CMD:", out iStart, out lParams, false))
+			{
+				if(lParams.Count == 0) continue;
+
+				string strCmd = WinUtil.CompileUrl((lParams[0] ?? string.Empty),
+					((ctx != null) ? ctx.Entry : null), true, null, true);
+				if(WinUtil.IsCommandLineUrl(strCmd))
+					strCmd = WinUtil.GetCommandLineFromUrl(strCmd);
+				if(string.IsNullOrEmpty(strCmd)) continue;
+
+				Process p = null;
+				try
+				{
+					StringComparison sc = StrUtil.CaseIgnoreCmp;
+
+					string strOpt = ((lParams.Count >= 2) ? lParams[1] :
+						string.Empty);
+					Dictionary<string, string> d = SplitParams(strOpt);
+
+					ProcessStartInfo psi = new ProcessStartInfo();
+
+					string strApp, strArgs;
+					StrUtil.SplitCommandLine(strCmd, out strApp, out strArgs, true);
+					if(string.IsNullOrEmpty(strApp)) continue;
+					psi.FileName = strApp;
+					if(!string.IsNullOrEmpty(strArgs)) psi.Arguments = strArgs;
+
+					string strMethod = GetParam(d, "m", "s");
+					bool bShellExec = !strMethod.Equals("c", sc);
+					psi.UseShellExecute = bShellExec;
+
+					string strO = GetParam(d, "o", (bShellExec ? "0" : "1"));
+					bool bStdOut = strO.Equals("1", sc);
+					if(bStdOut) psi.RedirectStandardOutput = true;
+
+					string strWS = GetParam(d, "ws", "n");
+					if(strWS.Equals("h", sc))
+					{
+						psi.CreateNoWindow = true;
+						psi.WindowStyle = ProcessWindowStyle.Hidden;
+					}
+					else if(strWS.Equals("min", sc))
+						psi.WindowStyle = ProcessWindowStyle.Minimized;
+					else if(strWS.Equals("max", sc))
+						psi.WindowStyle = ProcessWindowStyle.Maximized;
+					else { Debug.Assert(psi.WindowStyle == ProcessWindowStyle.Normal); }
+
+					string strVerb = GetParam(d, "v", null);
+					if(!string.IsNullOrEmpty(strVerb))
+						psi.Verb = strVerb;
+
+					bool bWait = GetParam(d, "w", "1").Equals("1", sc);
+
+					p = Process.Start(psi);
+					if(p == null) { Debug.Assert(false); continue; }
+
+					if(bStdOut)
+					{
+						string strOut = (p.StandardOutput.ReadToEnd() ?? string.Empty);
+
+						// Remove trailing new-line characters, like $(...);
+						// https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
+						// https://www.gnu.org/software/bash/manual/html_node/Command-Substitution.html#Command-Substitution
+						strOut = strOut.TrimEnd('\r', '\n');
+
+						strOut = TransformContent(strOut, ctx);
+						str = str.Insert(iStart, strOut);
+					}
+
+					if(bWait) p.WaitForExit();
+				}
+				catch(Exception ex)
+				{
+					string strMsg = strCmd + MessageService.NewParagraph + ex.Message;
+					MessageService.ShowWarning(strMsg);
+				}
+				finally
+				{
+					try { if(p != null) p.Dispose(); }
+					catch(Exception) { Debug.Assert(false); }
+				}
+			}
+
+			return str;
+		}
+
+		private static Dictionary<string, string> SplitParams(string str)
+		{
+			Dictionary<string, string> d = new Dictionary<string, string>();
+			if(string.IsNullOrEmpty(str)) return d;
+
+			char[] vSplitPrm = new char[] { ',' };
+			char[] vSplitKvp = new char[] { '=' };
+
+			string[] v = str.Split(vSplitPrm);
+			foreach(string strOption in v)
+			{
+				if(string.IsNullOrEmpty(strOption)) continue;
+
+				string[] vKvp = strOption.Split(vSplitKvp);
+				if(vKvp.Length != 2) continue;
+
+				string strKey = (vKvp[0] ?? string.Empty).Trim().ToLower();
+				string strValue = (vKvp[1] ?? string.Empty).Trim();
+
+				d[strKey] = strValue;
+			}
+
+			return d;
+		}
+
+		private static string GetParam(Dictionary<string, string> d,
+			string strName, string strDefaultValue)
+		{
+			if(d == null) { Debug.Assert(false); return strDefaultValue; }
+			if(strName == null) { Debug.Assert(false); return strDefaultValue; }
+
+			Debug.Assert(strName == strName.ToLower());
+
+			string strValue;
+			if(d.TryGetValue(strName, out strValue)) return strValue;
+
+			return strDefaultValue;
 		}
 	}
 }

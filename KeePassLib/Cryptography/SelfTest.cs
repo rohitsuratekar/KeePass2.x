@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Security;
 using System.Text;
 
@@ -58,27 +59,46 @@ namespace KeePassLib.Cryptography
 		/// </summary>
 		public static void Perform()
 		{
-			TestFipsComplianceProblems(); // Must be the first test
-
-			TestRijndael();
-			TestSalsa20();
-			TestChaCha20();
-			TestBlake2b();
-			TestArgon2();
-			TestHmac();
-
-			TestNativeKeyTransform();
-			
-			TestHmacOtp();
-
-			TestProtectedObjects();
-			TestMemUtil();
-			TestStrUtil();
-			TestUrlUtil();
+#if KeePassUAP
+			Debug.Assert(Marshal.SizeOf<int>() == 4);
+			Debug.Assert(Marshal.SizeOf<uint>() == 4);
+			Debug.Assert(Marshal.SizeOf<long>() == 8);
+			Debug.Assert(Marshal.SizeOf<ulong>() == 8);
+			Debug.Assert(Marshal.SizeOf<IntPtr>() == IntPtr.Size);
+#else
+			Debug.Assert(Marshal.SizeOf(typeof(int)) == 4);
+			Debug.Assert(Marshal.SizeOf(typeof(uint)) == 4);
+			Debug.Assert(Marshal.SizeOf(typeof(long)) == 8);
+			Debug.Assert(Marshal.SizeOf(typeof(ulong)) == 8);
+			Debug.Assert(Marshal.SizeOf(typeof(IntPtr)) == IntPtr.Size);
+#endif
+			Debug.Assert((IntPtr.Size == 4) || (IntPtr.Size == 8));
 
 			Debug.Assert((int)PwIcon.World == 1);
 			Debug.Assert((int)PwIcon.Warning == 2);
 			Debug.Assert((int)PwIcon.BlackBerry == 68);
+
+			Random r = CryptoRandom.NewWeakRandom();
+
+			TestFipsComplianceProblems(); // Must be the first test
+
+			TestAes();
+			TestSalsa20(r);
+			TestChaCha20(r);
+			TestSha256(r);
+			TestBlake2b(r);
+			TestArgon2();
+			TestHmac();
+
+			TestKeyTransform(r);
+			TestNativeKeyTransform(r);
+			
+			TestHmacOtp();
+
+			TestProtectedObjects(r);
+			TestMemUtil(r);
+			TestStrUtil();
+			TestUrlUtil();
 
 #if KeePassUAP
 			SelfTestEx.Perform();
@@ -102,51 +122,47 @@ namespace KeePassLib.Cryptography
 			}
 		}
 
-		private static void TestRijndael()
+		private static void TestAes()
 		{
 			// Test vector (official ECB test vector #356)
+			byte[] pbKey = new byte[32];
 			byte[] pbIV = new byte[16];
-			byte[] pbTestKey = new byte[32];
-			byte[] pbTestData = new byte[16];
-			byte[] pbReferenceCT = new byte[16] {
+			byte[] pbData = new byte[16];
+			pbData[0] = 0x04;
+			byte[] pbRefCT = new byte[16] {
 				0x75, 0xD1, 0x1B, 0x0E, 0x3A, 0x68, 0xC4, 0x22,
 				0x3D, 0x88, 0xDB, 0xF0, 0x17, 0x97, 0x7D, 0xD7 };
-			int i;
-
-			for(i = 0; i < 16; ++i) pbIV[i] = 0;
-			for(i = 0; i < 32; ++i) pbTestKey[i] = 0;
-			for(i = 0; i < 16; ++i) pbTestData[i] = 0;
-			pbTestData[0] = 0x04;
 
 #if KeePassUAP
-			AesEngine r = new AesEngine();
-			r.Init(true, new KeyParameter(pbTestKey));
-			if(r.GetBlockSize() != pbTestData.Length)
+			AesEngine aes = new AesEngine();
+			aes.Init(true, new KeyParameter(pbKey));
+			if(aes.GetBlockSize() != pbData.Length)
 				throw new SecurityException("AES (BC)");
-			r.ProcessBlock(pbTestData, 0, pbTestData, 0);
+			aes.ProcessBlock(pbData, 0, pbData, 0);
+			aes.Reset();
 #else
-			RijndaelManaged r = new RijndaelManaged();
-
-			if(r.BlockSize != 128) // AES block size
+			using(SymmetricAlgorithm a = CryptoUtil.CreateAes())
 			{
-				Debug.Assert(false);
-				r.BlockSize = 128;
+				if(a.BlockSize != 128) // AES block size
+				{
+					Debug.Assert(false);
+					a.BlockSize = 128;
+				}
+				a.KeySize = 256;
+				a.Mode = CipherMode.ECB;
+
+				using(ICryptoTransform t = a.CreateEncryptor(pbKey, pbIV))
+				{
+					t.TransformBlock(pbData, 0, 16, pbData, 0);
+				}
 			}
-
-			r.IV = pbIV;
-			r.KeySize = 256;
-			r.Key = pbTestKey;
-			r.Mode = CipherMode.ECB;
-			ICryptoTransform iCrypt = r.CreateEncryptor();
-
-			iCrypt.TransformBlock(pbTestData, 0, 16, pbTestData, 0);
 #endif
 
-			if(!MemUtil.ArraysEqual(pbTestData, pbReferenceCT))
+			if(!MemUtil.ArraysEqual(pbData, pbRefCT))
 				throw new SecurityException("AES");
 		}
 
-		private static void TestSalsa20()
+		private static void TestSalsa20(Random r)
 		{
 #if DEBUG
 			// Test values from official set 6, vector 3
@@ -179,7 +195,6 @@ namespace KeePassLib.Cryptography
 				0x28, 0xF5, 0x67, 0x91, 0xD5, 0xB7, 0xCE, 0x23
 			};
 
-			Random r = new Random();
 			int nPos = Salsa20ToPos(c, r, pb.Length, 65536);
 			Array.Clear(pb, 0, pb.Length);
 			c.Encrypt(pb, 0, pb.Length);
@@ -223,7 +238,7 @@ namespace KeePassLib.Cryptography
 		}
 #endif
 
-		private static void TestChaCha20()
+		private static void TestChaCha20(Random r)
 		{
 			// ======================================================
 			// Test vector from RFC 7539, section 2.3.2
@@ -328,7 +343,6 @@ namespace KeePassLib.Cryptography
 				"98CED759C3FF9B6477338F3DA4F9CD8514EA9982CCAFB341B2384DD902F3D1AB" +
 				"7AC61DD29C6F21BA5B862F3730E37CFDC4FD806C22F221");
 
-			Random r = new Random();
 			using(MemoryStream msEnc = new MemoryStream())
 			{
 				using(ChaCha20Stream c = new ChaCha20Stream(msEnc, true, pbKey, pbIV))
@@ -418,7 +432,38 @@ namespace KeePassLib.Cryptography
 #endif
 		}
 
-		private static void TestBlake2b()
+		private static void TestSha256(Random r)
+		{
+#if DEBUG
+			byte[] pbData = new byte[517];
+			r.NextBytes(pbData);
+
+			byte[] pbH1;
+			using(SHA256Managed h1 = new SHA256Managed())
+			{
+				int i = 0;
+				while(i != pbData.Length)
+				{
+					int cb = r.Next(pbData.Length - i) + 1;
+					h1.TransformBlock(pbData, i, cb, pbData, i);
+					i += cb;
+				}
+				h1.TransformFinalBlock(MemUtil.EmptyByteArray, 0, 0);
+				pbH1 = h1.Hash;
+			}
+
+			byte[] pbH2;
+			using(SHA256Managed h2 = new SHA256Managed())
+			{
+				pbH2 = h2.ComputeHash(pbData);
+			}
+
+			if(!MemUtil.ArraysEqual(pbH1, pbH2))
+				throw new SecurityException("SHA-256");
+#endif
+		}
+
+		private static void TestBlake2b(Random r)
 		{
 #if DEBUG
 			Blake2b h = new Blake2b();
@@ -479,11 +524,10 @@ namespace KeePassLib.Cryptography
 				0x3F, 0x08, 0x8A, 0x93, 0xF8, 0x75, 0x91, 0xB0
 			};
 
-			Random r = new Random();
 			int p = 0;
 			while(p < pbData.Length)
 			{
-				int cb = r.Next(1, pbData.Length - p + 1);
+				int cb = r.Next(pbData.Length - p) + 1;
 				h.TransformBlock(pbData, p, cb, pbData, p);
 				p += cb;
 			}
@@ -701,12 +745,45 @@ namespace KeePassLib.Cryptography
 		}
 #endif
 
-		private static void TestNativeKeyTransform()
+		private static void TestKeyTransform(Random r)
+		{
+#if DEBUG
+			// Up to KeePass 2.34, the OtpKeyProv plugin used the public
+			// CompositeKey.TransformKeyManaged method (and a finalizing
+			// SHA-256 computation), which became an internal method of
+			// the AesKdf class in KeePass 2.35, thus OtpKeyProv now
+			// uses the AesKdf class; here we ensure that the results
+			// are the same
+
+			byte[] pbKey = new byte[32];
+			r.NextBytes(pbKey);
+			byte[] pbSeed = new byte[32];
+			r.NextBytes(pbSeed);
+			ulong uRounds = (ulong)r.Next(1, 0x7FFF);
+
+			byte[] pbMan = new byte[pbKey.Length];
+			Array.Copy(pbKey, pbMan, pbKey.Length);
+			if(!AesKdf.TransformKeyManaged(pbMan, pbSeed, uRounds))
+				throw new SecurityException("AES-KDF-1");
+			pbMan = CryptoUtil.HashSha256(pbMan);
+
+			AesKdf kdf = new AesKdf();
+			KdfParameters p = kdf.GetDefaultParameters();
+			p.SetUInt64(AesKdf.ParamRounds, uRounds);
+			p.SetByteArray(AesKdf.ParamSeed, pbSeed);
+			byte[] pbKdf = kdf.Transform(pbKey, p);
+
+			if(!MemUtil.ArraysEqual(pbMan, pbKdf))
+				throw new SecurityException("AES-KDF-2");
+#endif
+		}
+
+		private static void TestNativeKeyTransform(Random r)
 		{
 #if DEBUG
 			byte[] pbOrgKey = CryptoRandom.Instance.GetRandomBytes(32);
 			byte[] pbSeed = CryptoRandom.Instance.GetRandomBytes(32);
-			ulong uRounds = (ulong)((new Random()).Next(1, 0x3FFF));
+			ulong uRounds = (ulong)r.Next(1, 0x3FFF);
 
 			byte[] pbManaged = new byte[32];
 			Array.Copy(pbOrgKey, pbManaged, 32);
@@ -723,10 +800,9 @@ namespace KeePassLib.Cryptography
 #endif
 		}
 
-		private static void TestMemUtil()
+		private static void TestMemUtil(Random r)
 		{
 #if DEBUG
-			Random r = new Random();
 			byte[] pb = CryptoRandom.Instance.GetRandomBytes((uint)r.Next(
 				0, 0x2FFFF));
 
@@ -794,6 +870,21 @@ namespace KeePassLib.Cryptography
 				throw new Exception("MemUtil-9");
 			if(MemUtil.BytesToInt32(pbRes) != i)
 				throw new Exception("MemUtil-10");
+
+			ArrayHelperEx<char> ah = MemUtil.ArrayHelperExOfChar;
+			for(int j = 0; j < 30; ++j)
+			{
+				string strA = r.Next(30).ToString();
+				string strB = r.Next(30).ToString();
+				char[] vA = strA.ToCharArray();
+				char[] vB = strB.ToCharArray();
+
+				if(ah.Equals(vA, vB) != string.Equals(strA, strB))
+					throw new Exception("MemUtil-11");
+				if((vA.Length == vB.Length) && (Math.Sign(ah.Compare(vA, vB)) !=
+					Math.Sign(string.CompareOrdinal(strA, strB))))
+					throw new Exception("MemUtil-12");
+			}
 #endif
 		}
 
@@ -813,7 +904,7 @@ namespace KeePassLib.Cryptography
 #endif
 		}
 
-		private static void TestProtectedObjects()
+		private static void TestProtectedObjects(Random r)
 		{
 #if DEBUG
 			Encoding enc = StrUtil.Utf8;
@@ -868,7 +959,6 @@ namespace KeePassLib.Cryptography
 			if(!ps.IsProtected) throw new SecurityException("ProtectedString-9");
 			if(!ps2.IsProtected) throw new SecurityException("ProtectedString-10");
 
-			Random r = new Random();
 			string str = string.Empty;
 			ps = new ProtectedString();
 			for(int i = 0; i < 100; ++i)
@@ -902,6 +992,14 @@ namespace KeePassLib.Cryptography
 				if(ps.ReadString() != str)
 					throw new SecurityException("ProtectedString-14");
 			}
+
+			ps = new ProtectedString(false, "ABCD");
+			ps2 = new ProtectedString(true, "EFG");
+			ps += (ps2 + "HI");
+			if(!ps.Equals(new ProtectedString(true, "ABCDEFGHI"), true))
+				throw new SecurityException("ProtectedString-15");
+			if(!ps.Equals(new ProtectedString(false, "ABCDEFGHI"), false))
+				throw new SecurityException("ProtectedString-16");
 #endif
 		}
 
@@ -999,6 +1097,30 @@ namespace KeePassLib.Cryptography
 				throw new InvalidOperationException("StrUtil-Case1");
 			if(string.Equals(@"a<b", @"a>b", StrUtil.CaseIgnoreCmp))
 				throw new InvalidOperationException("StrUtil-Case2");
+
+			const string strNL = "\n01\r23\n45\r\n67\r";
+			string strW = StrUtil.NormalizeNewLines(strNL, true);
+			string strL = StrUtil.NormalizeNewLines(strNL, false);
+			if(strW != "\r\n01\r\n23\r\n45\r\n67\r\n")
+				throw new InvalidOperationException("StrUtil-NewLine1");
+			if(strL != "\n01\n23\n45\n67\n")
+				throw new InvalidOperationException("StrUtil-NewLine2");
+			if(StrUtil.IsNewLineNormalized(strNL.ToCharArray(), true))
+				throw new InvalidOperationException("StrUtil-NewLine3");
+			if(StrUtil.IsNewLineNormalized(strNL.ToCharArray(), false))
+				throw new InvalidOperationException("StrUtil-NewLine4");
+			if(!StrUtil.IsNewLineNormalized(strW.ToCharArray(), true))
+				throw new InvalidOperationException("StrUtil-NewLine5");
+			if(StrUtil.IsNewLineNormalized(strW.ToCharArray(), false))
+				throw new InvalidOperationException("StrUtil-NewLine6");
+			if(StrUtil.IsNewLineNormalized(strL.ToCharArray(), true))
+				throw new InvalidOperationException("StrUtil-NewLine7");
+			if(!StrUtil.IsNewLineNormalized(strL.ToCharArray(), false))
+				throw new InvalidOperationException("StrUtil-NewLine8");
+			if(!StrUtil.IsNewLineNormalized(string.Empty.ToCharArray(), true))
+				throw new InvalidOperationException("StrUtil-NewLine9");
+			if(!StrUtil.IsNewLineNormalized(string.Empty.ToCharArray(), false))
+				throw new InvalidOperationException("StrUtil-NewLine10");
 #endif
 		}
 
@@ -1010,10 +1132,25 @@ namespace KeePassLib.Cryptography
 			Debug.Assert(Uri.UriSchemeHttps.Equals("https", StrUtil.CaseIgnoreCmp));
 #endif
 
+			string str = UrlUtil.FilterFileName(" A \"*:?/\\|<>B.txt . ");
+			if(!str.StartsWith(" A ")) throw new Exception("UrlUtil-FFN1");
+			if(!str.EndsWith("B.txt")) throw new Exception("UrlUtil-FFN2");
+			if(str.IndexOfAny(new char[] { '\"', '*', ':', '?', '/', '\\', '|', '<', '>' }) >= 0)
+				throw new Exception("UrlUtil-FFN3");
+
+			if(UrlUtil.GetScheme("cmdG://\"Test.txt\"") != "cmdG")
+				throw new Exception("UrlUtil-GS");
+			if(UrlUtil.RemoveScheme("cmdX://\"T\":A") != "\"T\":A")
+				throw new Exception("UrlUtil-RS1");
+			if(UrlUtil.RemoveScheme("cmdY:/\"T\":A") != "/\"T\":A")
+				throw new Exception("UrlUtil-RS2");
+			if(UrlUtil.RemoveScheme("cmdZ:\"T\":A") != "\"T\":A")
+				throw new Exception("UrlUtil-RS3");
+
 			if(UrlUtil.GetHost(@"scheme://domain:port/path?query_string#fragment_id") !=
 				"domain")
 				throw new InvalidOperationException("UrlUtil-H1");
-			if(UrlUtil.GetHost(@"http://example.org:80") != "example.org")
+			if(UrlUtil.GetHost(@"https://example.org:443") != "example.org")
 				throw new InvalidOperationException("UrlUtil-H2");
 			if(UrlUtil.GetHost(@"mailto:bob@example.com") != "example.com")
 				throw new InvalidOperationException("UrlUtil-H3");
@@ -1033,7 +1170,7 @@ namespace KeePassLib.Cryptography
 			string strDoc = "\\\\HOMESERVER\\Documents\\KeePass\\NewDatabase.kdbx";
 			string strRel = "..\\..\\Documents\\KeePass\\NewDatabase.kdbx";
 
-			string str = UrlUtil.MakeRelativePath(strBase, strDoc);
+			str = UrlUtil.MakeRelativePath(strBase, strDoc);
 			if(!str.Equals(strRel)) throw new InvalidOperationException("UrlUtil-R1");
 
 			str = UrlUtil.MakeAbsolutePath(strBase, strRel);

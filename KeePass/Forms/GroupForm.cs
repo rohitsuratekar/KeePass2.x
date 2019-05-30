@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,14 +20,16 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.Drawing;
-using System.Text;
-using System.Windows.Forms;
 using System.Diagnostics;
+using System.Drawing;
 using System.Globalization;
+using System.Text;
+using System.Threading;
+using System.Windows.Forms;
 
-using KeePass.UI;
+using KeePass.App;
 using KeePass.Resources;
+using KeePass.UI;
 
 using KeePassLib;
 using KeePassLib.Collections;
@@ -80,7 +82,7 @@ namespace KeePass.Forms
 			BannerFactory.CreateBannerEx(this, m_bannerImage,
 				Properties.Resources.B48x48_Folder_Txt, strTitle,
 				(m_bCreatingNew ? KPRes.AddGroupDesc : KPRes.EditGroupDesc));
-			this.Icon = Properties.Resources.KeePass;
+			this.Icon = AppIcons.Default;
 			this.Text = strTitle;
 
 			UIUtil.SetButtonImage(m_btnAutoTypeEdit,
@@ -135,6 +137,19 @@ namespace KeePass.Forms
 
 			CustomizeForScreenReader();
 			EnableControlsEx();
+
+			ThreadPool.QueueUserWorkItem(delegate(object state)
+			{
+				try
+				{
+					string[] vSeq = m_pwDatabase.RootGroup.GetAutoTypeSequences(true);
+					// Do not append, because long suggestions hide the start
+					UIUtil.EnableAutoCompletion(m_tbDefaultAutoTypeSeq,
+						false, vSeq); // Invokes
+				}
+				catch(Exception) { Debug.Assert(false); }
+			});
+
 			UIUtil.SetFocus(m_tbName, this);
 		}
 

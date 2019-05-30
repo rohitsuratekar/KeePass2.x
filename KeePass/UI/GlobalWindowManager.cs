@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -59,7 +59,7 @@ namespace KeePass.UI
 			new List<KeyValuePair<Form, IGwmWindow>>();
 		private static List<CommonDialog> g_vDialogs = new List<CommonDialog>();
 
-		private static object g_oSyncRoot = new object();
+		private static readonly object g_oSyncRoot = new object();
 
 		public static uint WindowCount
 		{
@@ -134,8 +134,8 @@ namespace KeePass.UI
 
 			// The control box must be enabled, otherwise DPI scaling
 			// doesn't work due to a .NET bug:
-			// http://connect.microsoft.com/VisualStudio/feedback/details/694242/difference-dpi-let-the-button-cannot-appear-completely-while-remove-the-controlbox-for-the-form
-			// http://social.msdn.microsoft.com/Forums/en-US/winforms/thread/67407313-8cb2-42b4-afb9-8be816f0a601/
+			// https://connect.microsoft.com/VisualStudio/feedback/details/694242/difference-dpi-let-the-button-cannot-appear-completely-while-remove-the-controlbox-for-the-form
+			// https://social.msdn.microsoft.com/Forums/en-US/winforms/thread/67407313-8cb2-42b4-afb9-8be816f0a601/
 			Debug.Assert(form.ControlBox);
 
 			form.TopMost = Program.Config.MainWindow.AlwaysOnTop;
@@ -254,10 +254,10 @@ namespace KeePass.UI
 
 		/* internal static bool HasWindowMW(IntPtr hWindow)
 		{
-			if(HasWindow(hWindow)) return true;
+			IntPtr hMW = Program.GetSafeMainWindowHandle();
+			if((hMW != IntPtr.Zero) && (hMW == hWindow)) return true;
 
-			MainForm mf = Program.MainForm;
-			if((mf != null) && (mf.Handle == hWindow)) return true;
+			if(HasWindow(hWindow)) return true;
 
 			return false;
 		} */
@@ -295,7 +295,7 @@ namespace KeePass.UI
 
 		public static void CustomizeControl(Control c)
 		{
-			if(NativeLib.IsUnix() && Program.Config.UI.ForceSystemFontUnix)
+			if(UISystemFonts.OverrideUIFont)
 			{
 				Font font = UISystemFonts.DefaultFont;
 				if(font != null) CustomizeFont(c, font);

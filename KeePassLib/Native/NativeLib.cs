@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -51,24 +51,6 @@ namespace KeePassLib.Native
 		{
 			get { return m_bAllowNative; }
 			set { m_bAllowNative = value; }
-		}
-
-		private static int? g_oiPointerSize = null;
-		/// <summary>
-		/// Size of a native pointer (in bytes).
-		/// </summary>
-		public static int PointerSize
-		{
-			get
-			{
-				if(!g_oiPointerSize.HasValue)
-#if KeePassUAP
-					g_oiPointerSize = Marshal.SizeOf<IntPtr>();
-#else
-					g_oiPointerSize = Marshal.SizeOf(typeof(IntPtr));
-#endif
-				return g_oiPointerSize.Value;
-			}
 		}
 
 		private static ulong? m_ouMonoVersion = null;
@@ -195,19 +177,21 @@ namespace KeePassLib.Native
 							t = DesktopType.Xfce;
 						else if(strXdg.Equals("MATE", sc))
 							t = DesktopType.Mate;
-						else if(strXdg.Equals("X-Cinnamon", sc))
+						else if(strXdg.Equals("X-Cinnamon", sc)) // Mint 18.3
 							t = DesktopType.Cinnamon;
 						else if(strXdg.Equals("Pantheon", sc)) // Elementary OS
 							t = DesktopType.Pantheon;
-						else if(strXdg.Equals("KDE", sc) || // Mint 16
+						else if(strXdg.Equals("KDE", sc) || // Mint 16, Kubuntu 17.10
 							strGdm.Equals("kde-plasma", sc)) // Ubuntu 12.04
 							t = DesktopType.Kde;
 						else if(strXdg.Equals("GNOME", sc))
 						{
 							if(strGdm.Equals("cinnamon", sc)) // Mint 13
 								t = DesktopType.Cinnamon;
-							else t = DesktopType.Gnome;
+							else t = DesktopType.Gnome; // Fedora 27
 						}
+						else if(strXdg.Equals("ubuntu:GNOME", sc))
+							t = DesktopType.Gnome;
 					}
 					catch(Exception) { Debug.Assert(false); }
 				}
@@ -243,21 +227,23 @@ namespace KeePassLib.Native
 
 			RunProcessDelegate fnRun = delegate()
 			{
+				Process pToDispose = null;
 				try
 				{
 					ProcessStartInfo psi = new ProcessStartInfo();
 
-					psi.CreateNoWindow = true;
-					psi.FileName = strAppPath;
-					psi.WindowStyle = ProcessWindowStyle.Hidden;
-					psi.UseShellExecute = false;
-					psi.RedirectStandardOutput = bStdOut;
-
-					if(strStdInput != null) psi.RedirectStandardInput = true;
-
+					psi.FileName = EncodePath(strAppPath);
 					if(!string.IsNullOrEmpty(strParams)) psi.Arguments = strParams;
 
+					psi.CreateNoWindow = true;
+					psi.WindowStyle = ProcessWindowStyle.Hidden;
+					psi.UseShellExecute = false;
+
+					psi.RedirectStandardOutput = bStdOut;
+					if(strStdInput != null) psi.RedirectStandardInput = true;
+
 					Process p = Process.Start(psi);
+					pToDispose = p;
 
 					if(strStdInput != null)
 					{
@@ -274,9 +260,11 @@ namespace KeePassLib.Native
 						p.WaitForExit();
 					else if((f & AppRunFlags.GCKeepAlive) != AppRunFlags.None)
 					{
+						pToDispose = null; // Thread disposes it
+
 						Thread th = new Thread(delegate()
 						{
-							try { p.WaitForExit(); }
+							try { p.WaitForExit(); p.Dispose(); }
 							catch(Exception) { Debug.Assert(false); }
 						});
 						th.Start();
@@ -284,7 +272,16 @@ namespace KeePassLib.Native
 
 					return strOutput;
 				}
-				catch(Exception) { Debug.Assert(false); }
+#if DEBUG
+				catch(Exception ex) { Debug.Assert(ex is ThreadAbortException); }
+#else
+				catch(Exception) { }
+#endif
+				finally
+				{
+					try { if(pToDispose != null) pToDispose.Dispose(); }
+					catch(Exception) { Debug.Assert(false); }
+				}
 
 				return null;
 			};
@@ -447,6 +444,85 @@ namespace KeePassLib.Native
 
 			if(kvpPointers.Value != IntPtr.Zero)
 				Marshal.FreeHGlobal(kvpPointers.Value);
+		}
+
+		internal static Type GetUwpType(string strType)
+		{
+			if(string.IsNullOrEmpty(strType)) { Debug.Assert(false); return null; }
+
+			// https://referencesource.microsoft.com/#mscorlib/system/runtime/interopservices/windowsruntime/winrtclassactivator.cs
+			return Type.GetType(strType + ", Windows, ContentType=WindowsRuntime", false);
+		}
+
+		internal static string EncodeDataToArgs(string strData)
+		{
+			if(strData == null) { Debug.Assert(false); return string.Empty; }
+
+			// Cf. EncodePath and DecodeArgsToPath
+			if(MonoWorkarounds.IsRequired(3471228285U) && IsUnix())
+			{
+				string str = strData;
+
+				str = str.Replace("\\", "\\\\");
+				str = str.Replace("\"", "\\\"");
+
+				// Whether '\'' needs to be encoded depends on the context
+				// (e.g. surrounding quotes); as we do not know what the
+				// caller does with the returned string, we assume that
+				// it will be used in a context where '\'' must not be
+				// encoded; this behavior is documented
+				// str = str.Replace("\'", "\\\'");
+
+				return str;
+			}
+
+			// See SHELLEXECUTEINFO structure documentation
+			return strData.Replace("\"", "\"\"\"");
+		}
+
+		/// <summary>
+		/// Encode a path for <c>Process.Start</c>.
+		/// </summary>
+		internal static string EncodePath(string strPath)
+		{
+			if(strPath == null) { Debug.Assert(false); return string.Empty; }
+
+			// Cf. EncodeDataToArgs and DecodeArgsToPath
+			if(MonoWorkarounds.IsRequired(3471228285U) && IsUnix())
+			{
+				string str = strPath;
+
+				str = str.Replace("\\", "\\\\");
+				str = str.Replace("\"", "\\\"");
+
+				// '\'' must not be encoded in paths (only in args)
+				// str = str.Replace("\'", "\\\'");
+
+				return str;
+			}
+
+			return strPath; // '\"' is not allowed in paths on Windows
+		}
+
+		/// <summary>
+		/// Decode command line arguments to a path for <c>Process.Start</c>.
+		/// </summary>
+		internal static string DecodeArgsToPath(string strArgs)
+		{
+			if(strArgs == null) { Debug.Assert(false); return string.Empty; }
+
+			string str = strArgs;
+
+			// Cf. EncodeDataToArgs and EncodePath
+			// if(MonoWorkarounds.IsRequired(3471228285U) && IsUnix())
+			// {
+			//	string strPlh = Guid.NewGuid().ToString();
+			//	str = str.Replace("\\\\", strPlh);
+			//	str = str.Replace("\\\'", "\'");
+			//	str = str.Replace(strPlh, "\\\\"); // Restore
+			// }
+
+			return str; // '\"' is not allowed in paths on Windows
 		}
 	}
 }

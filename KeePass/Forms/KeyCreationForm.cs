@@ -1,6 +1,6 @@
 /*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,13 +20,13 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
-using System.Text;
 using System.IO;
+using System.Text;
 using System.Windows.Forms;
-using System.Diagnostics;
 
 using KeePass.App;
 using KeePass.App.Configuration;
@@ -51,7 +51,9 @@ namespace KeePass.Forms
 		private IOConnectionInfo m_ioInfo = new IOConnectionInfo();
 
 		private PwInputControlGroup m_icgPassword = new PwInputControlGroup();
+		private Image m_imgKeyFileWarning = null;
 		private Image m_imgAccWarning = null;
+		// private uint m_uBlockUpdate = 0;
 
 		public CompositeKey CompositeKey
 		{
@@ -65,6 +67,9 @@ namespace KeePass.Forms
 		public KeyCreationForm()
 		{
 			InitializeComponent();
+
+			SecureTextBoxEx.InitEx(ref m_tbPassword);
+			SecureTextBoxEx.InitEx(ref m_tbRepeatPassword);
 			Program.Translation.ApplyTo(this);
 		}
 
@@ -77,12 +82,17 @@ namespace KeePass.Forms
 
 		private void OnFormLoad(object sender, EventArgs e)
 		{
+			// The password text box should not be focused by default
+			// in order to avoid a Caps Lock warning tooltip bug;
+			// https://sourceforge.net/p/keepass/bugs/1807/
+			Debug.Assert((m_tbPassword.TabIndex >= 2) && !m_tbPassword.Focused);
+
 			GlobalWindowManager.AddWindow(this);
 
 			BannerFactory.CreateBannerEx(this, m_bannerImage,
 				Properties.Resources.B48x48_KGPG_Sign, KPRes.CreateMasterKey,
 				m_ioInfo.GetDisplayName());
-			this.Icon = Properties.Resources.KeePass;
+			this.Icon = AppIcons.Default;
 			this.Text = KPRes.CreateMasterKey;
 
 			FontUtil.SetDefaultFont(m_cbPassword);
@@ -90,10 +100,13 @@ namespace KeePass.Forms
 			FontUtil.AssignDefaultBold(m_cbKeyFile);
 			FontUtil.AssignDefaultBold(m_cbUserAccount);
 
-			Bitmap bmpBig = SystemIcons.Warning.ToBitmap();
-			m_imgAccWarning = GfxUtil.ScaleImage(bmpBig, DpiUtil.ScaleIntX(16),
-				DpiUtil.ScaleIntY(16), ScaleTransformFlags.UIIcon);
-			bmpBig.Dispose();
+			using(Bitmap bmp = SystemIcons.Warning.ToBitmap())
+			{
+				m_imgAccWarning = GfxUtil.ScaleImage(bmp, DpiUtil.ScaleIntX(16),
+					DpiUtil.ScaleIntY(16), ScaleTransformFlags.UIIcon);
+				m_imgKeyFileWarning = (Image)m_imgAccWarning.Clone();
+			}
+			m_picKeyFileWarning.Image = m_imgKeyFileWarning;
 			m_picAccWarning.Image = m_imgAccWarning;
 
 			UIUtil.ConfigureToolTip(m_ttRect);
@@ -102,6 +115,7 @@ namespace KeePass.Forms
 			m_ttRect.SetToolTip(m_btnOpenKeyFile, KPRes.KeyFileUseExisting);
 			m_ttRect.SetToolTip(m_tbRepeatPassword, KPRes.PasswordRepeatHint);
 
+			Debug.Assert(!m_lblIntro.AutoSize); // For RTL support
 			if(!m_bCreatingNew)
 				m_lblIntro.Text = KPRes.ChangeMasterKeyIntroShort;
 
@@ -136,9 +150,9 @@ namespace KeePass.Forms
 		{
 			// Focusing doesn't always work in OnFormLoad;
 			// https://sourceforge.net/p/keepass/feature-requests/1735/
-			if(m_tbPassword.CanFocus) UIUtil.ResetFocus(m_tbPassword, this);
-			else if(m_cmbKeyFile.CanFocus) UIUtil.SetFocus(m_cmbKeyFile, this);
-			else if(m_btnCreate.CanFocus) UIUtil.SetFocus(m_btnCreate, this);
+			if(m_tbPassword.CanFocus) UIUtil.ResetFocus(m_tbPassword, this, true);
+			else if(m_cmbKeyFile.CanFocus) UIUtil.SetFocus(m_cmbKeyFile, this, true);
+			else if(m_btnCreate.CanFocus) UIUtil.SetFocus(m_btnCreate, this, true);
 			else { Debug.Assert(false); }
 		}
 
@@ -151,6 +165,13 @@ namespace KeePass.Forms
 
 		private void CleanUpEx()
 		{
+			if(m_imgKeyFileWarning != null)
+			{
+				m_picKeyFileWarning.Image = null;
+				m_imgKeyFileWarning.Dispose();
+				m_imgKeyFileWarning = null;
+			}
+
 			if(m_imgAccWarning != null)
 			{
 				m_picAccWarning.Image = null;
@@ -169,7 +190,7 @@ namespace KeePass.Forms
 			{
 				if(!m_icgPassword.ValidateData(true)) return false;
 
-				uint uPwLen = m_icgPassword.PasswordLength;
+				uint uPwLen = (uint)m_tbPassword.TextLength;
 				if(uPwLen == 0)
 				{
 					if(!MessageService.AskYesNo(KPRes.EmptyMasterPw +
@@ -191,28 +212,29 @@ namespace KeePass.Forms
 				}
 
 				byte[] pb = m_icgPassword.GetPasswordUtf8();
-
-				uint uMinQual = Program.Config.Security.MasterPassword.MinimumQuality;
-				if(QualityEstimation.EstimatePasswordBits(pb) < uMinQual)
+				try
 				{
-					string strMQ = KPRes.MasterPasswordMinQualityFailed;
-					strMQ = strMQ.Replace(@"{PARAM}", uMinQual.ToString());
-					MessageService.ShowWarning(strMQ);
-					MemUtil.ZeroByteArray(pb);
-					return false;
-				}
+					uint uMinQual = Program.Config.Security.MasterPassword.MinimumQuality;
+					if(QualityEstimation.EstimatePasswordBits(pb) < uMinQual)
+					{
+						string strMQ = KPRes.MasterPasswordMinQualityFailed;
+						strMQ = strMQ.Replace(@"{PARAM}", uMinQual.ToString());
+						MessageService.ShowWarning(strMQ);
+						return false;
+					}
 
-				string strValRes = Program.KeyValidatorPool.Validate(pb,
-					KeyValidationType.MasterPassword);
-				if(strValRes != null)
-				{
-					MessageService.ShowWarning(strValRes);
-					MemUtil.ZeroByteArray(pb);
-					return false;
-				}
+					string strValRes = Program.KeyValidatorPool.Validate(pb,
+						KeyValidationType.MasterPassword);
+					if(strValRes != null)
+					{
+						MessageService.ShowWarning(strValRes);
+						return false;
+					}
 
-				m_pKey.AddUserKey(new KcpPassword(pb));
-				MemUtil.ZeroByteArray(pb);
+					m_pKey.AddUserKey(new KcpPassword(pb,
+						Program.Config.Security.MasterPassword.RememberWhileOpen));
+				}
+				finally { MemUtil.ZeroByteArray(pb); }
 			}
 
 			string strKeyFile = m_cmbKeyFile.Text;
@@ -271,25 +293,57 @@ namespace KeePass.Forms
 
 		private void EnableUserControls()
 		{
+			// Must support recursive call, see m_cbExpert.Checked
+			// if(m_uBlockUpdate != 0) return;
+			// ++m_uBlockUpdate;
+
 			m_icgPassword.Enabled = m_cbPassword.Checked;
 
 			bool bKeyFile = m_cbKeyFile.Checked;
 			m_cmbKeyFile.Enabled = bKeyFile;
 
 			string strKeyFile = m_cmbKeyFile.Text;
-
 			bool bKeyProv = (!strKeyFile.Equals(KPRes.NoKeyFileSpecifiedMeta) &&
 				Program.KeyProviderPool.IsKeyProvider(strKeyFile));
 			m_btnOpenKeyFile.Enabled = m_btnSaveKeyFile.Enabled =
 				(bKeyFile && !bKeyProv);
 
-			if(!m_cbPassword.Checked && !m_cbKeyFile.Checked && !m_cbUserAccount.Checked)
+			bool bUserAccount = m_cbUserAccount.Checked;
+			if(!m_cbPassword.Checked && !bKeyFile && !bUserAccount)
 				m_btnCreate.Enabled = false;
-			else if(m_cbKeyFile.Checked && strKeyFile.Equals(KPRes.NoKeyFileSpecifiedMeta))
+			else if(bKeyFile && strKeyFile.Equals(KPRes.NoKeyFileSpecifiedMeta))
 				m_btnCreate.Enabled = false;
 			else m_btnCreate.Enabled = true;
 
 			m_ttRect.SetToolTip(m_cmbKeyFile, strKeyFile);
+
+			bool bExpert = m_cbExpert.Checked;
+			bool bShowKF = (bExpert || bKeyFile);
+			bool bShowUA = (bExpert || bUserAccount);
+
+			Control[] vKeyFile = new Control[] {
+				m_cbKeyFile, m_cmbKeyFile, m_btnOpenKeyFile, m_btnSaveKeyFile,
+				m_lblKeyFileInfo, m_picKeyFileWarning, m_lblKeyFileWarning,
+				m_lnkKeyFile
+			};
+			foreach(Control c in vKeyFile) c.Visible = bShowKF;
+
+			Control[] vUserAccount = new Control[] {
+				m_cbUserAccount, m_lblWindowsAccDesc, m_picAccWarning,
+				m_lblWindowsAccDesc2, m_lnkUserAccount
+			};
+			foreach(Control c in vUserAccount) c.Visible = bShowUA;
+
+			if(bKeyFile || bUserAccount)
+			{
+				if(!m_cbExpert.Checked)
+					m_cbExpert.Checked = true; // Recursive, once
+
+				m_cbExpert.Enabled = false;
+			}
+			else m_cbExpert.Enabled = true;
+
+			// --m_uBlockUpdate;
 		}
 
 		private void OnCheckedPassword(object sender, EventArgs e)
@@ -400,6 +454,23 @@ namespace KeePass.Forms
 		private void OnFormClosing(object sender, FormClosingEventArgs e)
 		{
 			CleanUpEx();
+		}
+
+		private void OnKeyFileLinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
+		{
+			AppHelp.ShowHelp(AppDefs.HelpTopics.KeySources,
+				AppDefs.HelpTopics.KeySourcesKeyFile);
+		}
+
+		private void OnUserAccountLinkClicked(object sender, LinkLabelLinkClickedEventArgs e)
+		{
+			AppHelp.ShowHelp(AppDefs.HelpTopics.KeySources,
+				AppDefs.HelpTopics.KeySourcesUserAccount);
+		}
+
+		private void OnExpertCheckedChanged(object sender, EventArgs e)
+		{
+			EnableUserControls();
 		}
 	}
 }

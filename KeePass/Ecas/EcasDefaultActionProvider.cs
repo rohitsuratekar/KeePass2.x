@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -20,11 +20,11 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Text;
-using System.IO;
-using System.Windows.Forms;
-using System.Threading;
 using System.Diagnostics;
+using System.IO;
+using System.Text;
+using System.Threading;
+using System.Windows.Forms;
 
 using KeePass.App;
 using KeePass.DataExchange;
@@ -40,6 +40,8 @@ using KeePassLib.Delegates;
 using KeePassLib.Keys;
 using KeePassLib.Serialization;
 using KeePassLib.Utility;
+
+using NativeLib = KeePassLib.Native.NativeLib;
 
 namespace KeePass.Ecas
 {
@@ -102,7 +104,7 @@ namespace KeePass.Ecas
 						EcasValueType.String, null),
 					new EcasParameter(KPRes.Password, EcasValueType.String, null),
 					new EcasParameter(KPRes.KeyFile, EcasValueType.String, null),
-					new EcasParameter(KPRes.UserAccount, EcasValueType.Bool, null) },
+					new EcasParameter(KPRes.WindowsUserAccount, EcasValueType.Bool, null) },
 				OpenDatabaseFile));
 
 			m_actions.Add(new EcasActionType(new PwUuid(new byte[] {
@@ -143,7 +145,7 @@ namespace KeePass.Ecas
 								StrUtil.RemoveAccelerator(KPRes.OverwriteIfNewerAndApplyDel)) })),
 					new EcasParameter(KPRes.Password, EcasValueType.String, null),
 					new EcasParameter(KPRes.KeyFile, EcasValueType.String, null),
-					new EcasParameter(KPRes.UserAccount, EcasValueType.Bool, null) },
+					new EcasParameter(KPRes.WindowsUserAccount, EcasValueType.Bool, null) },
 				ImportIntoCurrentDatabase));
 
 			m_actions.Add(new EcasActionType(new PwUuid(new byte[] {
@@ -258,20 +260,26 @@ namespace KeePass.Ecas
 
 		private static void ExecuteShellCmd(EcasAction a, EcasContext ctx)
 		{
-			string strCmd = EcasUtil.GetParamString(a.Parameters, 0, true, true);
+			string strCmd = EcasUtil.GetParamString(a.Parameters, 0);
 			string strArgs = EcasUtil.GetParamString(a.Parameters, 1, true, true);
-			bool bWait = StrUtil.StringToBool(EcasUtil.GetParamString(a.Parameters,
-				2, string.Empty));
+			bool bWait = EcasUtil.GetParamBool(a.Parameters, 2);
 			uint uWindowStyle = EcasUtil.GetParamUInt(a.Parameters, 3);
 			string strVerb = EcasUtil.GetParamString(a.Parameters, 4, true);
 
 			if(string.IsNullOrEmpty(strCmd)) return;
 
+			Process p = null;
 			try
 			{
-				ProcessStartInfo psi = new ProcessStartInfo(strCmd);
-				if(!string.IsNullOrEmpty(strArgs))
-					psi.Arguments = strArgs;
+				PwEntry pe = null;
+				try { pe = Program.MainForm.GetSelectedEntry(false); }
+				catch(Exception) { Debug.Assert(false); }
+
+				strCmd = WinUtil.CompileUrl(strCmd, pe, true, null, false);
+
+				ProcessStartInfo psi = new ProcessStartInfo();
+				psi.FileName = NativeLib.EncodePath(strCmd);
+				if(!string.IsNullOrEmpty(strArgs)) psi.Arguments = strArgs;
 
 				bool bShEx = true;
 				if(!string.IsNullOrEmpty(strVerb)) { } // Need ShellExecute
@@ -300,7 +308,7 @@ namespace KeePass.Ecas
 				if(!string.IsNullOrEmpty(strVerb))
 					psi.Verb = strVerb;
 
-				Process p = Process.Start(psi);
+				p = Process.Start(psi);
 
 				if((p != null) && bWait)
 				{
@@ -314,9 +322,14 @@ namespace KeePass.Ecas
 					Program.MainForm.UIBlockInteraction(false);
 				}
 			}
-			catch(Exception e)
+			catch(Exception ex)
 			{
-				throw new Exception(strCmd + MessageService.NewParagraph + e.Message);
+				throw new Exception(strCmd + MessageService.NewParagraph + ex.Message);
+			}
+			finally
+			{
+				try { if(p != null) p.Dispose(); }
+				catch(Exception) { Debug.Assert(false); }
 			}
 		}
 
@@ -365,8 +378,7 @@ namespace KeePass.Ecas
 		{
 			string strPassword = EcasUtil.GetParamString(a.Parameters, iPassword, true);
 			string strKeyFile = EcasUtil.GetParamString(a.Parameters, iKeyFile, true);
-			bool bUserAccount = StrUtil.StringToBool(EcasUtil.GetParamString(
-				a.Parameters, iUserAccount, true));
+			bool bUserAccount = EcasUtil.GetParamBool(a.Parameters, iUserAccount);
 
 			CompositeKey cmpKey = null;
 			if(!string.IsNullOrEmpty(strPassword) || !string.IsNullOrEmpty(strKeyFile) ||

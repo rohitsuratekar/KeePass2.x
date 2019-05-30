@@ -1,6 +1,6 @@
 ﻿/*
   KeePass Password Safe - The Open-Source Password Manager
-  Copyright (C) 2003-2017 Dominik Reichl <dominik.reichl@t-online.de>
+  Copyright (C) 2003-2019 Dominik Reichl <dominik.reichl@t-online.de>
 
   This program is free software; you can redistribute it and/or modify
   it under the terms of the GNU General Public License as published by
@@ -19,11 +19,11 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
-using System.Drawing;
-using System.Windows.Forms;
-using System.Threading;
 using System.Diagnostics;
+using System.Drawing;
+using System.Text;
+using System.Threading;
+using System.Windows.Forms;
 
 using KeePass.App;
 using KeePass.App.Configuration;
@@ -33,24 +33,22 @@ using KeePass.Util.Spr;
 
 using KeePassLib;
 using KeePassLib.Cryptography;
+using KeePassLib.Security;
 using KeePassLib.Utility;
 
 namespace KeePass.UI
 {
 	public sealed class PwInputControlGroup
 	{
-		private TextBox m_tbPassword = null;
+		private SecureTextBoxEx m_tbPassword = null;
 		private CheckBox m_cbHide = null;
 		private Label m_lblRepeat = null;
-		private TextBox m_tbRepeat = null;
+		private SecureTextBoxEx m_tbRepeat = null;
 		private Label m_lblQualityPrompt = null;
 		private QualityProgressBar m_pbQuality = null;
 		private Label m_lblQualityInfo = null;
 		private ToolTip m_ttHint = null;
 		private Form m_fParent = null;
-
-		private SecureEdit m_secPassword = null;
-		private SecureEdit m_secRepeat = null;
 
 		private bool m_bInitializing = false;
 		private uint m_uPrgmCheck = 0;
@@ -74,15 +72,6 @@ namespace KeePass.UI
 		{
 			get { return m_bSprVar; }
 			set { m_bSprVar = value; }
-		}
-
-		public uint PasswordLength
-		{
-			get
-			{
-				if(m_secPassword == null) { Debug.Assert(false); return 0; }
-				return m_secPassword.TextLength;
-			}
 		}
 
 		private bool AutoRepeat
@@ -124,8 +113,8 @@ namespace KeePass.UI
 		}
 #endif
 
-		public void Attach(TextBox tbPassword, CheckBox cbHide, Label lblRepeat,
-			TextBox tbRepeat, Label lblQualityPrompt, QualityProgressBar pbQuality,
+		public void Attach(SecureTextBoxEx tbPassword, CheckBox cbHide, Label lblRepeat,
+			SecureTextBoxEx tbRepeat, Label lblQualityPrompt, QualityProgressBar pbQuality,
 			Label lblQualityInfo, ToolTip ttHint, Form fParent, bool bInitialHide,
 			bool bSecureDesktopMode)
 		{
@@ -152,13 +141,11 @@ namespace KeePass.UI
 			m_ttHint = ttHint;
 			m_fParent = fParent;
 
-			m_secPassword = new SecureEdit();
-			m_secPassword.SecureDesktopMode = bSecureDesktopMode;
-			m_secPassword.Attach(m_tbPassword, this.OnPasswordTextChanged, bInitialHide);
+			m_tbPassword.TextChanged += this.OnPasswordTextChanged;
+			m_tbPassword.EnableProtection(bInitialHide);
 
-			m_secRepeat = new SecureEdit();
-			m_secRepeat.SecureDesktopMode = bSecureDesktopMode;
-			m_secRepeat.Attach(m_tbRepeat, this.OnRepeatTextChanged, bInitialHide);
+			m_tbRepeat.TextChanged += this.OnRepeatTextChanged;
+			m_tbRepeat.EnableProtection(bInitialHide);
 
 			ConfigureHideButton(m_cbHide, m_ttHint);
 
@@ -177,8 +164,8 @@ namespace KeePass.UI
 			Debug.Assert(!m_bInitializing);
 			if(m_tbPassword == null) return;
 
-			m_secPassword.Detach();
-			m_secRepeat.Detach();
+			m_tbPassword.TextChanged -= this.OnPasswordTextChanged;
+			m_tbRepeat.TextChanged -= this.OnRepeatTextChanged;
 
 			m_cbHide.CheckedChanged -= this.OnHideCheckedChanged;
 
@@ -191,9 +178,6 @@ namespace KeePass.UI
 			m_lblQualityInfo = null;
 			m_ttHint = null;
 			m_fParent = null;
-
-			m_secPassword = null;
-			m_secRepeat = null;
 		}
 
 		private uint m_uBlockUIUpdate = 0;
@@ -206,12 +190,13 @@ namespace KeePass.UI
 			if(m_fParent is KeyCreationForm)
 				uFlags = Program.Config.UI.KeyCreationFlags;
 
-			byte[] pbUtf8 = m_secPassword.ToUtf8();
-			string str = StrUtil.Utf8.GetString(pbUtf8);
+			byte[] pbUtf8 = m_tbPassword.TextEx.ReadUtf8();
+			char[] v = StrUtil.Utf8.GetChars(pbUtf8);
 
 #if DEBUG
-			byte[] pbTest = StrUtil.Utf8.GetBytes(str);
+			byte[] pbTest = StrUtil.Utf8.GetBytes(v);
 			Debug.Assert(MemUtil.ArraysEqual(pbUtf8, pbTest));
+			MemUtil.ZeroByteArray(pbTest);
 #endif
 
 			m_tbPassword.Enabled = m_bEnabled;
@@ -232,10 +217,10 @@ namespace KeePass.UI
 			}
 
 			bool bAutoRepeat = this.AutoRepeat;
-			if(bAutoRepeat && (m_secRepeat.TextLength > 0))
-				m_secRepeat.SetPassword(MemUtil.EmptyByteArray);
+			if(bAutoRepeat && (m_tbRepeat.TextLength > 0))
+				m_tbRepeat.Text = string.Empty;
 
-			byte[] pbRepeat = m_secRepeat.ToUtf8();
+			byte[] pbRepeat = m_tbRepeat.TextEx.ReadUtf8();
 			if(!MemUtil.ArraysEqual(pbUtf8, pbRepeat) && !bAutoRepeat)
 				m_tbRepeat.BackColor = AppDefs.ColorEditError;
 			else m_tbRepeat.ResetBackColor();
@@ -247,13 +232,14 @@ namespace KeePass.UI
 			bool bQuality = m_bEnabled;
 			if(m_bSprVar && bQuality)
 			{
-				if(SprEngine.MightChange(str)) // Perf. opt.
+				if(SprEngine.MightChange(v)) // Perf. opt.
 				{
 					// {S:...} and {REF:...} may reference the entry that
 					// is currently being edited and SprEngine will not see
 					// the current data entered in the dialog; thus we
 					// disable quality estimation for all strings containing
 					// one of these placeholders
+					string str = new string(v);
 					if((str.IndexOf(@"{S:", StrUtil.CaseIgnoreCmp) >= 0) ||
 						(str.IndexOf(@"{REF:", StrUtil.CaseIgnoreCmp) >= 0))
 						bQuality = false;
@@ -268,6 +254,7 @@ namespace KeePass.UI
 #if DEBUG
 				else
 				{
+					string str = new string(v);
 					SprContext ctx = new SprContext(m_ctxEntry, m_ctxDatabase,
 						SprCompileFlags.NonActive, false, false);
 					string strCmp = SprEngine.Compile(str, ctx);
@@ -286,11 +273,12 @@ namespace KeePass.UI
 				m_pbQuality.Visible = false;
 				m_lblQualityInfo.Visible = false;
 			}
-			else if(bQuality || !m_bSprVar) UpdateQualityInfo(str);
+			else if(bQuality || !m_bSprVar) UpdateQualityInfo(v);
 			else UqiShowQuality(0, 0);
 
-			// MemUtil.ZeroByteArray(pbUtf8);
-			// MemUtil.ZeroByteArray(pbRepeat);
+			MemUtil.ZeroByteArray(pbUtf8);
+			MemUtil.ZeroByteArray(pbRepeat);
+			MemUtil.ZeroArray<char>(v);
 			--m_uBlockUIUpdate;
 		}
 
@@ -320,16 +308,14 @@ namespace KeePass.UI
 				}
 			}
 
-			m_secPassword.EnableProtection(bHide);
-			m_secRepeat.EnableProtection(bHide);
+			m_tbPassword.EnableProtection(bHide);
+			m_tbRepeat.EnableProtection(bHide);
 
 			bool bWasAutoRepeat = Program.Config.UI.RepeatPasswordOnlyWhenHidden;
 			if(bHide && (m_uPrgmCheck == 0) && bWasAutoRepeat)
 			{
 				++m_uBlockUIUpdate;
-				byte[] pb = GetPasswordUtf8();
-				m_secRepeat.SetPassword(pb);
-				MemUtil.ZeroByteArray(pb);
+				m_tbRepeat.TextEx = m_tbPassword.TextEx;
 				--m_uBlockUIUpdate;
 			}
 
@@ -337,14 +323,13 @@ namespace KeePass.UI
 			if(m_uPrgmCheck == 0) UIUtil.SetFocus(m_tbPassword, m_fParent);
 		}
 
-		public void SetPassword(byte[] pbUtf8, bool bSetRepeatPw)
+		public void SetPassword(ProtectedString ps, bool bSetRepeatPw)
 		{
-			if(pbUtf8 == null) { Debug.Assert(false); return; }
+			if(ps == null) { Debug.Assert(false); return; }
 
 			++m_uBlockUIUpdate;
-			m_secPassword.SetPassword(pbUtf8);
-			if(bSetRepeatPw && !this.AutoRepeat)
-				m_secRepeat.SetPassword(pbUtf8);
+			m_tbPassword.TextEx = ps;
+			if(bSetRepeatPw && !this.AutoRepeat) m_tbRepeat.TextEx = ps;
 			--m_uBlockUIUpdate;
 
 			UpdateUI();
@@ -352,51 +337,64 @@ namespace KeePass.UI
 
 		public void SetPasswords(string strPassword, string strRepeat)
 		{
-			byte[] pbP = ((strPassword != null) ? StrUtil.Utf8.GetBytes(
-				strPassword) : null);
-			byte[] pbR = ((strRepeat != null) ? StrUtil.Utf8.GetBytes(
-				strRepeat) : null);
-			SetPasswords(pbP, pbR);
+			ProtectedString psP = ((strPassword != null) ? new ProtectedString(
+				false, strPassword) : null);
+			ProtectedString psR = ((strRepeat != null) ? new ProtectedString(
+				false, strRepeat) : null);
+			SetPasswords(psP, psR);
 		}
 
-		public void SetPasswords(byte[] pbPasswordUtf8, byte[] pbRepeatUtf8)
+		public void SetPasswords(ProtectedString psPassword, ProtectedString psRepeat)
 		{
 			++m_uBlockUIUpdate;
-			if(pbPasswordUtf8 != null)
-				m_secPassword.SetPassword(pbPasswordUtf8);
-			if((pbRepeatUtf8 != null) && !this.AutoRepeat)
-				m_secRepeat.SetPassword(pbRepeatUtf8);
+			if(psPassword != null)
+				m_tbPassword.TextEx = psPassword;
+			if((psRepeat != null) && !this.AutoRepeat)
+				m_tbRepeat.TextEx = psRepeat;
 			--m_uBlockUIUpdate;
 
 			UpdateUI();
 		}
 
+		[Obsolete]
 		public string GetPassword()
 		{
-			return StrUtil.Utf8.GetString(m_secPassword.ToUtf8());
+			return m_tbPassword.TextEx.ReadString();
+		}
+
+		public ProtectedString GetPasswordEx()
+		{
+			return m_tbPassword.TextEx;
 		}
 
 		public byte[] GetPasswordUtf8()
 		{
-			return m_secPassword.ToUtf8();
+			return m_tbPassword.TextEx.ReadUtf8();
 		}
 
+		[Obsolete]
 		public string GetRepeat()
 		{
-			if(this.AutoRepeat) return GetPassword();
-			return StrUtil.Utf8.GetString(m_secRepeat.ToUtf8());
+			if(this.AutoRepeat) return m_tbPassword.TextEx.ReadString();
+			return m_tbRepeat.TextEx.ReadString();
+		}
+
+		public ProtectedString GetRepeatEx()
+		{
+			if(this.AutoRepeat) return GetPasswordEx();
+			return m_tbRepeat.TextEx;
 		}
 
 		public byte[] GetRepeatUtf8()
 		{
 			if(this.AutoRepeat) return GetPasswordUtf8();
-			return m_secRepeat.ToUtf8();
+			return m_tbRepeat.TextEx.ReadUtf8();
 		}
 
 		public bool ValidateData(bool bUIOnError)
 		{
 			if(this.AutoRepeat) return true;
-			if(m_secPassword.ContentsEqualTo(m_secRepeat)) return true;
+			if(m_tbPassword.TextEx.Equals(m_tbRepeat.TextEx, false)) return true;
 
 			if(bUIOnError)
 			{
@@ -409,78 +407,88 @@ namespace KeePass.UI
 			return false;
 		}
 
-		private List<string> m_lUqiTasks = new List<string>();
-		private void UpdateQualityInfo(string str)
+		private static string GetUqiTaskID(char[] v)
 		{
-			if(str == null) { Debug.Assert(false); return; }
+			byte[] pb = StrUtil.Utf8.GetBytes(v);
+			byte[] pbHash = CryptoUtil.HashSha256(pb);
+			MemUtil.ZeroByteArray(pb);
+			return Convert.ToBase64String(pbHash);
+		}
+
+		private List<string> m_lUqiTasks = new List<string>();
+		private readonly object m_oUqiTasksSync = new object();
+		private void UpdateQualityInfo(char[] v)
+		{
+			if(v == null) { Debug.Assert(false); return; }
 
 			int nTasks;
-			lock(m_lUqiTasks)
+			lock(m_oUqiTasksSync)
 			{
-				if(m_lUqiTasks.Contains(str)) return;
+				string strTask = GetUqiTaskID(v);
+				if(m_lUqiTasks.Contains(strTask)) return;
 
 				nTasks = m_lUqiTasks.Count;
-				m_lUqiTasks.Add(str);
+				m_lUqiTasks.Add(strTask);
 			}
+
+			char[] vForTh = new char[v.Length]; // Will be cleared by thread
+			Array.Copy(v, vForTh, v.Length);
 
 			int nPoolWorkers, nPoolCompletions;
 			ThreadPool.GetAvailableThreads(out nPoolWorkers, out nPoolCompletions);
 
 			if((nTasks <= 3) && (nPoolWorkers >= 2))
 				ThreadPool.QueueUserWorkItem(new WaitCallback(
-					this.UpdateQualityInfoTh), str);
+					this.UpdateQualityInfoTh), vForTh);
 			else
 			{
 				ParameterizedThreadStart pts = new ParameterizedThreadStart(
 					this.UpdateQualityInfoTh);
 				Thread th = new Thread(pts);
-				th.Start(str);
+				th.Start(vForTh);
 			}
 		}
 
 		private void UpdateQualityInfoTh(object oPassword)
 		{
-			string str = (oPassword as string);
-			if(str == null) { Debug.Assert(false); return; }
+			char[] v = (oPassword as char[]);
+			if(v == null) { Debug.Assert(false); return; }
 
+			char[] vNew = null;
 			try
 			{
 				Debug.Assert(m_tbPassword.InvokeRequired);
-				// byte[] pbUtf8 = (m_tbPassword.Invoke(new UqiGetPasswordFn(
-				//	this.UqiGetPassword)) as byte[]);
-				// if(pbUtf8 == null) { Debug.Assert(false); return; }
-				byte[] pbUtf8 = StrUtil.Utf8.GetBytes(str);
 
-				// str = StrUtil.Utf8.GetString(pbUtf8);
-				// lock(m_lUqiTasks) { m_lUqiTasks.Add(str); }
+				uint uBits = QualityEstimation.EstimatePasswordBits(v);
 
-				uint uBits = QualityEstimation.EstimatePasswordBits(pbUtf8);
-
-				TextBox tb = m_tbPassword;
+				SecureTextBoxEx tb = m_tbPassword;
 				if(tb == null) return; // Control disposed in the meanwhile
 
-				byte[] pbNewUtf8 = (tb.Invoke(new UqiGetPasswordDelegate(
-					this.UqiGetPassword)) as byte[]);
-				if(pbNewUtf8 == null) { Debug.Assert(false); return; }
-
-				// Test whether password has changed in the meanwhile
-				if(!MemUtil.ArraysEqual(pbUtf8, pbNewUtf8)) return;
+				// Test whether the password has changed in the meanwhile
+				vNew = (tb.Invoke(new UqiGetPasswordDelegate(
+					this.UqiGetPassword)) as char[]);
+				if(!MemUtil.ArrayHelperExOfChar.Equals(v, vNew)) return;
 
 				tb.Invoke(new UqiShowQualityDelegate(this.UqiShowQuality),
-					uBits, (uint)str.Length);
+					uBits, (uint)v.Length);
 			}
 			catch(Exception) { Debug.Assert(false); }
 			finally
 			{
-				lock(m_lUqiTasks) { m_lUqiTasks.Remove(str); }
+				string strTask = GetUqiTaskID(v);
+				lock(m_oUqiTasksSync) { m_lUqiTasks.Remove(strTask); }
+
+				MemUtil.ZeroArray<char>(v);
+				if(vNew != null) MemUtil.ZeroArray<char>(vNew);
 			}
 		}
 
-		private delegate byte[] UqiGetPasswordDelegate();
-		private byte[] UqiGetPassword()
+		private delegate char[] UqiGetPasswordDelegate();
+		private char[] UqiGetPassword()
 		{
-			try { return m_secPassword.ToUtf8(); }
+			try { return m_tbPassword.TextEx.ReadChars(); }
 			catch(Exception) { Debug.Assert(false); }
+
 			return null;
 		}
 
@@ -491,8 +499,8 @@ namespace KeePass.UI
 			{
 				bool bUnknown = (m_bSprVar && !m_pbQuality.Enabled);
 
-				string strBits = (bUnknown ? "?" : uBits.ToString()) +
-					" " + KPRes.BitsStc;
+				string strBits = KPRes.BitsEx.Replace(@"{PARAM}",
+					(bUnknown ? "?" : uBits.ToString()));
 				m_pbQuality.ProgressText = (bUnknown ? string.Empty : strBits);
 
 				int iPos = (int)((100 * uBits) / (256 / 2));
@@ -505,7 +513,7 @@ namespace KeePass.UI
 				string strInfo = strLength + " " + KPRes.CharsAbbr;
 				if(Program.Config.UI.OptimizeForScreenReader)
 					strInfo = strBits + ", " + strInfo;
-				m_lblQualityInfo.Text = strInfo;
+				UIUtil.SetText(m_lblQualityInfo, strInfo);
 				if(m_ttHint != null)
 					m_ttHint.SetToolTip(m_lblQualityInfo, KPRes.PasswordLength +
 						": " + strLength + " " + KPRes.CharsStc);
@@ -525,11 +533,13 @@ namespace KeePass.UI
 			Debug.Assert(cb.TextAlign == ContentAlignment.MiddleCenter);
 			Debug.Assert(cb.TextImageRelation == TextImageRelation.Overlay);
 			Debug.Assert(cb.UseVisualStyleBackColor);
-			Debug.Assert((cb.Width == 32) || DpiUtil.ScalingRequired);
-			Debug.Assert((cb.Height == 23) || DpiUtil.ScalingRequired);
+			Debug.Assert((cb.Width == 32) || DpiUtil.ScalingRequired ||
+				MonoWorkarounds.IsRequired(100001));
+			Debug.Assert((cb.Height == 23) || DpiUtil.ScalingRequired ||
+				MonoWorkarounds.IsRequired(100001));
 
 			// Too much spacing between the dots when using the default font
-			// cb.Text = new string(SecureEdit.PasswordChar, 3);
+			// cb.Text = new string(SecureTextBoxEx.PasswordCharEx, 3);
 			cb.Text = string.Empty;
 
 			Image img = Properties.Resources.B19x07_3BlackDots;
